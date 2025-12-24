@@ -46,6 +46,7 @@ export interface RoguelikeTrait {
 export interface Faction {
   id: FactionId;
   name: string;
+  leaderName: string; // New: For the UI
   group: 'ROMAN' | 'PUNIC' | 'HELLENIC' | 'BARBARIAN' | 'EASTERN';
   color: string;
   textColor: string;
@@ -56,6 +57,10 @@ export interface Faction {
   desc: string;
   unlockedTechs: string[];
   traits: RoguelikeTrait[]; // Roguelike elements
+  images: {
+    leader: string;
+    background: string;
+  };
 }
 
 export interface Unit {
@@ -79,6 +84,11 @@ export interface Province {
   defenseBonus: number;
   troops: Unit[];
   hasRebellionRisk: boolean;
+  currentConstruction?: {
+    name: string;
+    progress: number;
+    total: number;
+  };
 }
 
 export interface GameState {

@@ -79,13 +79,16 @@ export const TECH_TREES: Record<string, Technology[]> = {
 };
 
 // --- DATA ---
+// Using pollinations.ai to simulate "Generated" images based on prompts
+const GEN_URL = "https://image.pollinations.ai/prompt";
 
 export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
   [FactionId.ROME]: {
     id: FactionId.ROME,
-    name: 'Roman Republic',
+    name: 'Rome',
+    leaderName: 'Augustus Caesar',
     group: 'ROMAN',
-    color: '#b91c1c', // Red 700
+    color: '#b91c1c', 
     textColor: '#fee2e2',
     gold: 200,
     manpower: 1000,
@@ -93,13 +96,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Disciplined legions and diverse administration.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/portrait%20of%20roman%20emperor%20augustus%20statue%20marble%20dramatic%20lighting%20dark%20background%20strategy%20game%20art?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/roman%20forum%20ancient%20city%20sunset%20digital%20art?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.CARTHAGE]: {
     id: FactionId.CARTHAGE,
     name: 'Carthage',
+    leaderName: 'Hannibal Barca',
     group: 'PUNIC',
-    color: '#fafafa', // White
+    color: '#e5e5e5', 
     textColor: '#1c1917',
     gold: 400,
     manpower: 600,
@@ -107,13 +115,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Masters of trade and naval warfare.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/portrait%20of%20hannibal%20barca%20carthage%20general%20rugged%20beard%20armor%20cinematic%20lighting?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/carthage%20harbor%20ancient%20ships%20digital%20art?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.MACEDON]: {
     id: FactionId.MACEDON,
     name: 'Macedon',
+    leaderName: 'Philip V',
     group: 'HELLENIC',
-    color: '#1e3a8a', // Blue 900
+    color: '#1e3a8a', 
     textColor: '#dbeafe',
     gold: 150,
     manpower: 800,
@@ -121,13 +134,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Heirs of Alexander with pike phalanxes.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/greek%20king%20philip%20macedon%20helmet%20golden%20armor%20portrait?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/greek%20phalanx%20formation%20battlefield?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.GAUL]: {
     id: FactionId.GAUL,
-    name: 'Gaulish Tribes',
+    name: 'Gaul',
+    leaderName: 'Vercingetorix',
     group: 'BARBARIAN',
-    color: '#15803d', // Green 700
+    color: '#15803d', 
     textColor: '#dcfce7',
     gold: 50,
     manpower: 1500,
@@ -135,13 +153,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Fierce warriors spread across Europa.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/vercingetorix%20gaul%20chieftain%20long%20hair%20mustache%20celtic%20tattoos%20portrait?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/celtic%20forest%20village%20misty?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.EGYPT]: {
     id: FactionId.EGYPT,
-    name: 'Ptolemaic Egypt',
+    name: 'Egypt',
+    leaderName: 'Cleopatra VII',
     group: 'HELLENIC',
-    color: '#eab308', // Yellow 500
+    color: '#eab308', 
     textColor: '#422006',
     gold: 500,
     manpower: 500,
@@ -149,13 +172,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Ancient riches and hellenic culture.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/cleopatra%20egypt%20queen%20golden%20crown%20makeup%20beautiful%20portrait%20cinematic?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/pyramids%20of%20giza%20nile%20river%20ancient?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.PARTHIA]: {
     id: FactionId.PARTHIA,
-    name: 'Parthian Empire',
+    name: 'Parthia',
+    leaderName: 'Mithridates',
     group: 'EASTERN',
-    color: '#7e22ce', // Purple 700
+    color: '#7e22ce', 
     textColor: '#f3e8ff',
     gold: 200,
     manpower: 800,
@@ -163,13 +191,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Masters of horse archery from the East.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/parthian%20king%20eastern%20armor%20crown%20portrait?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/desert%20cavalry%20charge%20parthian?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.IBERIA]: {
     id: FactionId.IBERIA,
-    name: 'Iberian Tribes',
+    name: 'Iberia',
+    leaderName: 'Indibilis',
     group: 'BARBARIAN',
-    color: '#c2410c', // Orange 700
+    color: '#c2410c', 
     textColor: '#ffedd5',
     gold: 80,
     manpower: 900,
@@ -177,13 +210,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Resilient warriors of the peninsula.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/iberian%20warrior%20chief%20falcata%20sword%20portrait?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/spanish%20hills%20ancient%20fort?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.BRITANNIA]: {
     id: FactionId.BRITANNIA,
     name: 'Britannia',
+    leaderName: 'Cassivellaunus',
     group: 'BARBARIAN',
-    color: '#0f766e', // Teal 700
+    color: '#0f766e', 
     textColor: '#ccfbf1',
     gold: 40,
     manpower: 800,
@@ -191,13 +229,18 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Isolated tribes with painted warriors.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/celtic%20briton%20king%20woad%20paint%20chariot%20background%20portrait?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/stonehenge%20misty%20morning?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.GERMANIA]: {
     id: FactionId.GERMANIA,
     name: 'Germania',
+    leaderName: 'Arminius',
     group: 'BARBARIAN',
-    color: '#3f3f46', // Zinc 700
+    color: '#3f3f46', 
     textColor: '#e4e4e7',
     gold: 30,
     manpower: 1200,
@@ -205,11 +248,16 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Untamed forests and terrifying raids.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: `${GEN_URL}/germanic%20barbarian%20arminius%20forest%20portrait?width=512&height=512&nologo=true`,
+      background: `${GEN_URL}/teutoburg%20forest%20dark%20ancient?width=800&height=600&nologo=true`
+    }
   },
   [FactionId.REBELS]: {
     id: FactionId.REBELS,
-    name: 'Rebels & Usurpers',
+    name: 'Rebels',
+    leaderName: 'Spartacus',
     group: 'BARBARIAN',
     color: '#000000',
     textColor: '#ef4444',
@@ -219,18 +267,22 @@ export const INITIAL_FACTIONS: Record<FactionId, Faction> = {
     isPlayer: false,
     desc: 'Those who oppose the ruling order.',
     unlockedTechs: [],
-    traits: []
+    traits: [],
+    images: {
+      leader: '',
+      background: ''
+    }
   }
 };
 
 export const INITIAL_PROVINCES: Province[] = [
   // ITALY
-  { id: 'p_roma', name: 'Roma', x: 480, y: 350, ownerId: FactionId.ROME, neighbors: ['p_cisalpina', 'p_magna_graecia'], resourceValue: 20, manpowerValue: 100, defenseBonus: 2, troops: [], hasRebellionRisk: false },
+  { id: 'p_roma', name: 'Roma', x: 480, y: 350, ownerId: FactionId.ROME, neighbors: ['p_cisalpina', 'p_magna_graecia'], resourceValue: 20, manpowerValue: 100, defenseBonus: 2, troops: [], hasRebellionRisk: false, currentConstruction: { name: 'Grand Forum', progress: 2, total: 5 } },
   { id: 'p_magna_graecia', name: 'Magna Graecia', x: 500, y: 400, ownerId: FactionId.ROME, neighbors: ['p_roma', 'p_sicily'], resourceValue: 12, manpowerValue: 50, defenseBonus: 0, troops: [], hasRebellionRisk: false },
   { id: 'p_cisalpina', name: 'Cisalpina', x: 460, y: 300, ownerId: FactionId.ROME, neighbors: ['p_roma', 'p_transalpina', 'p_illyria'], resourceValue: 10, manpowerValue: 60, defenseBonus: 0, troops: [], hasRebellionRisk: false },
   
   // AFRICA
-  { id: 'p_carthage', name: 'Carthago', x: 450, y: 450, ownerId: FactionId.CARTHAGE, neighbors: ['p_sicily', 'p_numidia', 'p_sardinia'], resourceValue: 25, manpowerValue: 80, defenseBonus: 2, troops: [], hasRebellionRisk: false },
+  { id: 'p_carthage', name: 'Carthago', x: 450, y: 450, ownerId: FactionId.CARTHAGE, neighbors: ['p_sicily', 'p_numidia', 'p_sardinia'], resourceValue: 25, manpowerValue: 80, defenseBonus: 2, troops: [], hasRebellionRisk: false, currentConstruction: { name: 'Great Harbor', progress: 3, total: 4 } },
   { id: 'p_numidia', name: 'Numidia', x: 380, y: 460, ownerId: FactionId.CARTHAGE, neighbors: ['p_carthage', 'p_mauretania'], resourceValue: 8, manpowerValue: 90, defenseBonus: 0, troops: [], hasRebellionRisk: false },
   { id: 'p_mauretania', name: 'Mauretania', x: 300, y: 450, ownerId: FactionId.IBERIA, neighbors: ['p_numidia', 'p_hispania_baetica'], resourceValue: 5, manpowerValue: 50, defenseBonus: 0, troops: [], hasRebellionRisk: false },
 
@@ -280,6 +332,6 @@ export const INITIAL_PROVINCES: Province[] = [
   { id: 'p_palestina', name: 'Palestina', x: 730, y: 460, ownerId: FactionId.EGYPT, neighbors: ['p_syria', 'p_aegyptus'], resourceValue: 10, manpowerValue: 50, defenseBonus: 0, troops: [], hasRebellionRisk: true },
   
   // AFRICA PT 2
-  { id: 'p_aegyptus', name: 'Aegyptus', x: 700, y: 500, ownerId: FactionId.EGYPT, neighbors: ['p_palestina', 'p_cyrenaica'], resourceValue: 35, manpowerValue: 150, defenseBonus: 1, troops: [], hasRebellionRisk: false },
+  { id: 'p_aegyptus', name: 'Aegyptus', x: 700, y: 500, ownerId: FactionId.EGYPT, neighbors: ['p_palestina', 'p_cyrenaica'], resourceValue: 35, manpowerValue: 150, defenseBonus: 1, troops: [], hasRebellionRisk: false, currentConstruction: { name: 'Pyramid Repair', progress: 1, total: 10 } },
   { id: 'p_cyrenaica', name: 'Cyrenaica', x: 600, y: 480, ownerId: FactionId.EGYPT, neighbors: ['p_aegyptus', 'p_crete'], resourceValue: 10, manpowerValue: 30, defenseBonus: 0, troops: [], hasRebellionRisk: false },
 ];
