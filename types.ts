@@ -20,10 +20,24 @@ export enum FactionId {
   NEUTRAL = 'NEUTRAL'
 }
 
+export enum MapMode {
+  POLITICAL = 'POLITICAL',
+  TERRAIN = 'TERRAIN',
+  ECONOMY = 'ECONOMY'
+}
+
 export enum TechCategory {
   MILITARY = 'MILITARY',
   ECONOMIC = 'ECONOMIC',
   ADMIN = 'ADMIN'
+}
+
+export enum TerrainType {
+  PLAINS = 'PLAINS',
+  FOREST = 'FOREST',
+  HILLS = 'HILLS',
+  DESERT = 'DESERT',
+  MOUNTAIN = 'MOUNTAIN'
 }
 
 export interface Technology {
@@ -110,6 +124,7 @@ export interface Province {
   resourceValue: number; // Base Gold
   manpowerValue: number; // Base Manpower
   defenseBonus: number;
+  terrain: TerrainType; // New terrain property
   troops: Unit[];
   buildings: string[]; // Array of Building IDs
   activeDecreeId: string | null;
@@ -136,6 +151,7 @@ export interface GameState {
   loadingAI: boolean; 
   modalMessage: { title: string; body: string; image?: string } | null;
   isPaused: boolean; // For in-game menu
+  mapMode: MapMode;
 }
 
 export interface BattleState {
