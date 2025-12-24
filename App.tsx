@@ -1,9 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   GameState, Phase, FactionId, Faction, Province, Unit, BattleState, 
   TechCategory, Technology, RoguelikeTrait
 } from './types';
 import { INITIAL_FACTIONS, INITIAL_PROVINCES, TECH_TREES, ROGUELIKE_TRAITS } from './constants';
+
+// --- UTILITY COMPONENTS ---
+
+const Tooltip = ({ children, text }: { children?: React.ReactNode, text: string }) => (
+  <div className="group relative flex items-center">
+    {children}
+    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 hidden group-hover:block w-max max-w-xs bg-stone-900 text-stone-200 text-xs rounded p-2 border border-amber-700 shadow-xl z-50">
+      {text}
+    </div>
+  </div>
+);
+
+const Button = ({ onClick, disabled, variant = 'primary', className = '', children }: any) => {
+  const baseStyle = "font-serif font-bold py-2 px-4 rounded shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+  const variants = {
+    primary: "bg-gradient-to-b from-red-800 to-red-900 border border-red-600 text-red-50 hover:from-red-700 hover:to-red-800",
+    gold: "bg-gradient-to-b from-amber-600 to-amber-700 border border-amber-400 text-white hover:from-amber-500 hover:to-amber-600",
+    neutral: "bg-stone-700 border border-stone-500 text-stone-200 hover:bg-stone-600",
+    danger: "bg-red-950 border border-red-800 text-red-500 hover:bg-red-900",
+    success: "bg-emerald-800 border border-emerald-600 text-emerald-50 hover:bg-emerald-700"
+  };
+  
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={disabled} 
+      className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+// --- MAIN APP ---
 
 function App() {
   // --- STATE ---
@@ -15,13 +49,22 @@ function App() {
     factions: INITIAL_FACTIONS,
     provinces: INITIAL_PROVINCES,
     selectedProvinceId: null,
+    moveSourceId: null,
     logs: [],
     activeBattle: null,
     loadingAI: false,
     modalMessage: null,
   });
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // UI State
+  const [viewState, setViewState] = useState({ scale: 1, x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [showTechTree, setShowTechTree] = useState(false);
+  const [battleSpeed, setBattleSpeed] = useState<number | null>(null); // null = paused, number = ms delay
+  const [battleAnimState, setBattleAnimState] = useState<'idle' | 'clashing'>('idle');
+
+  const mapRef = useRef<HTMLDivElement>(null);
 
   // --- ACTIONS ---
 
@@ -33,9 +76,9 @@ function App() {
   };
 
   const startGame = (factionId: FactionId) => {
-    // Roguelike Init: Assign random traits to player
+    // Roguelike Init
     const shuffledTraits = [...ROGUELIKE_TRAITS].sort(() => 0.5 - Math.random());
-    const pickedTraits = shuffledTraits.slice(0, 2); // Pick 2 random traits
+    const pickedTraits = shuffledTraits.slice(0, 2);
 
     const newFactions = { ...INITIAL_FACTIONS };
     newFactions[factionId] = {
@@ -44,9 +87,9 @@ function App() {
       traits: pickedTraits
     };
 
-    // Apply trait effects immediately if needed (mostly passive though)
+    // Apply trait effects
     pickedTraits.forEach(trait => {
-      if(trait.effectType === 'GOLD_MOD') newFactions[factionId].gold += 100; // Bonus starting gold
+      if(trait.effectType === 'GOLD_MOD') newFactions[factionId].gold += 100;
     });
 
     setGameState({
@@ -54,27 +97,123 @@ function App() {
       phase: Phase.CAMPAIGN,
       playerFactionId: factionId,
       factions: newFactions,
-      logs: [`Welcome, leader of ${newFactions[factionId].name}.`, `Fate has bestowed upon you: ${pickedTraits.map(t => t.name).join(', ')}`],
+      logs: [`Welcome, leader of ${newFactions[factionId].name}.`, `Fate has bestowed: ${pickedTraits.map(t => t.name).join(', ')}`],
       year: 270,
       turn: 1
     });
+
+    // Center map on capital (approximate logic)
+    const capital = INITIAL_PROVINCES.find(p => p.ownerId === factionId);
+    if (capital) {
+      centerMapOn(capital.x, capital.y);
+    }
   };
+
+  const centerMapOn = (x: number, y: number) => {
+    if (!mapRef.current) return;
+    const width = mapRef.current.clientWidth;
+    const height = mapRef.current.clientHeight;
+    setViewState({
+      scale: 1.2,
+      x: width / 2 - x * 1.2,
+      y: height / 2 - y * 1.2
+    });
+  };
+
+  // --- MAP CONTROLS ---
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const scaleAmount = -e.deltaY * 0.001;
+    const newScale = Math.min(Math.max(0.5, viewState.scale + scaleAmount), 3);
+    setViewState(prev => ({ ...prev, scale: newScale }));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - viewState.x, y: e.clientY - viewState.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setViewState(prev => ({
+        ...prev,
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      }));
+    }
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
+  // --- GAMEPLAY LOGIC ---
 
   const selectProvince = (id: string) => {
     if (gameState.phase !== Phase.CAMPAIGN) return;
+
+    // Handle Relocation Selection
+    if (gameState.moveSourceId) {
+        if (gameState.moveSourceId === id) {
+            // Clicked self, cancel
+            setGameState(prev => ({ ...prev, moveSourceId: null }));
+            return;
+        }
+        
+        const sourceProv = gameState.provinces.find(p => p.id === gameState.moveSourceId);
+        const targetProv = gameState.provinces.find(p => p.id === id);
+
+        if (sourceProv && targetProv) {
+            // Logic: Must be neighbor AND owned by player
+            if (sourceProv.neighbors.includes(targetProv.id) && targetProv.ownerId === gameState.playerFactionId) {
+                // Execute Move
+                const troopsToMove = [...sourceProv.troops];
+                
+                const newProvinces = gameState.provinces.map(p => {
+                    if (p.id === sourceProv.id) return { ...p, troops: [] };
+                    if (p.id === targetProv.id) return { ...p, troops: [...p.troops, ...troopsToMove] };
+                    return p;
+                });
+
+                setGameState(prev => ({
+                    ...prev,
+                    provinces: newProvinces,
+                    moveSourceId: null,
+                    selectedProvinceId: targetProv.id, // Follow troops
+                    logs: [`Army marched from ${sourceProv.name} to ${targetProv.name}.`, ...prev.logs]
+                }));
+            } else {
+                addLog("Invalid destination. Must be a neighboring province you own.");
+            }
+        }
+        return;
+    }
+
+    // Normal Selection
     setGameState(prev => ({ ...prev, selectedProvinceId: id }));
+  };
+
+  const startRelocation = () => {
+      const provId = gameState.selectedProvinceId;
+      if(!provId) return;
+      
+      const prov = gameState.provinces.find(p => p.id === provId);
+      if(!prov || prov.troops.length === 0) {
+          addLog("No troops to move.");
+          return;
+      }
+
+      setGameState(prev => ({ ...prev, moveSourceId: provId }));
   };
 
   const endTurn = () => {
     const nextTurn = gameState.turn + 1;
-    const nextYear = gameState.year - 1; // BC goes down
+    const nextYear = gameState.year - 1; 
     
     // 1. Economy & Manpower
     const updatedFactions = { ...gameState.factions };
     const updatedProvinces = gameState.provinces.map(prov => {
       const owner = updatedFactions[prov.ownerId];
       if (owner) {
-        // Trait Modifiers
         let goldMod = 1;
         let manpowerMod = 1;
         owner.traits.forEach(t => {
@@ -88,10 +227,7 @@ function App() {
         owner.gold += income;
         owner.manpower += manpower;
 
-        // Rebellion Logic
         if (prov.hasRebellionRisk && Math.random() < 0.1) {
-             // addLog(`Rebellion erupts in ${prov.name}!`); // Log handled outside map to avoid state loop issues if tricky
-             // Actually safe to add log in next state update
              return { ...prov, ownerId: FactionId.REBELS, hasRebellionRisk: false };
         }
       }
@@ -99,12 +235,10 @@ function App() {
     });
 
     // 2. AI Turn (Simplified)
-    // AI recruits troops randomly if it has money
     Object.keys(updatedFactions).forEach(fid => {
         const f = updatedFactions[fid as FactionId];
         if (!f.isPlayer && f.gold > 100) {
             f.gold -= 50;
-            // Find a random province
             const aiProvs = updatedProvinces.filter(p => p.ownerId === fid);
             if (aiProvs.length > 0) {
                 const target = aiProvs[Math.floor(Math.random() * aiProvs.length)];
@@ -126,6 +260,7 @@ function App() {
       year: nextYear,
       factions: updatedFactions,
       provinces: updatedProvinces,
+      moveSourceId: null, // Cancel any moves
       logs: [`Year ${nextYear} BC began.`, ...prev.logs]
     }));
   };
@@ -138,24 +273,19 @@ function App() {
     const prov = gameState.provinces[provIndex];
     const player = gameState.factions[gameState.playerFactionId];
 
-    if (prov.ownerId !== player.id) {
-        alert("Can only recruit in your own provinces.");
-        return;
-    }
-
     if (player.gold >= 50 && player.manpower >= 100) {
         const newUnit: Unit = {
             id: `u_${Date.now()}`,
             type: 'INFANTRY',
             hp: 100,
             maxHp: 100,
-            damage: 15, // Base damage
+            damage: 15,
             ownerId: player.id
         };
 
-        // Tech Bonuses & Trait Bonuses
-        if (player.unlockedTechs.includes('r_m1')) newUnit.damage += 2; // Manipular
-        if (player.unlockedTechs.includes('b_m1')) newUnit.damage += 3; // Blood Oath
+        // Tech & Traits
+        if (player.unlockedTechs.includes('r_m1')) newUnit.damage += 2; 
+        if (player.unlockedTechs.includes('b_m1')) newUnit.damage += 3;
         player.traits.forEach(t => {
             if(t.effectType === 'COMBAT_MOD' && t.value > 1) newUnit.damage = Math.floor(newUnit.damage * t.value);
         });
@@ -173,8 +303,6 @@ function App() {
             provinces: newProvinces,
             logs: [`Recruited Infantry in ${prov.name}.`, ...prev.logs]
         }));
-    } else {
-        alert("Not enough resources (50 Gold, 100 Manpower required).");
     }
   };
 
@@ -183,29 +311,20 @@ function App() {
       const targetProv = gameState.provinces.find(p => p.id === gameState.selectedProvinceId);
       if (!targetProv || targetProv.ownerId === gameState.playerFactionId) return;
 
-      // Check adjacency
       const ownedProvinces = gameState.provinces.filter(p => p.ownerId === gameState.playerFactionId);
-      const isNeighbor = ownedProvinces.some(p => p.neighbors.includes(targetProv.id));
-      
-      if (!isNeighbor) {
-          alert("Can only attack neighboring provinces!");
-          return;
-      }
-
-      // Gather attackers from a neighbor
       const attackingProv = ownedProvinces.find(p => p.neighbors.includes(targetProv.id));
+      
       if (!attackingProv || attackingProv.troops.length === 0) {
-          alert("You need troops in a neighboring province to attack.");
+          addLog("Cannot attack: No troops in neighboring provinces.");
           return;
       }
 
       const attackers = [...attackingProv.troops];
       const defenders = [...targetProv.troops];
 
-      // If no defenders, instant win
       if (defenders.length === 0) {
           const newProvinces = gameState.provinces.map(p => {
-              if (p.id === targetProv.id) return { ...p, ownerId: gameState.playerFactionId!, troops: attackers.slice(0, 1) }; // Move 1 unit in
+              if (p.id === targetProv.id) return { ...p, ownerId: gameState.playerFactionId!, troops: attackers.slice(0, 1) };
               if (p.id === attackingProv.id) return { ...p, troops: attackers.slice(1) };
               return p;
           });
@@ -217,7 +336,7 @@ function App() {
           return;
       }
 
-      // Start Battle
+      // Enter Battle Mode
       setGameState(prev => ({
           ...prev,
           phase: Phase.BATTLE,
@@ -234,46 +353,65 @@ function App() {
       }));
   };
 
-  const resolveBattleRound = () => {
-    if (!gameState.activeBattle) return;
-    
-    const battle = { ...gameState.activeBattle };
-    const attacker = gameState.factions[battle.attackerId];
-    
-    // Attacker hits Defender
-    const dmg = battle.attackerUnits.reduce((acc, u) => acc + u.damage, 0) * (0.8 + Math.random() * 0.4);
-    
-    // Tech & Trait modifiers
-    let atkMod = 1;
-    attacker.traits.forEach(t => { if(t.effectType === 'COMBAT_MOD') atkMod *= t.value; });
-    
-    // Defender hits Attacker
-    const defDmg = battle.defenderUnits.reduce((acc, u) => acc + u.damage, 0) * (0.8 + Math.random() * 0.4);
+  // --- BATTLE LOGIC & ANIMATION ---
 
-    // Distribute damage (simple stack wipe logic for MVP)
-    if (battle.defenderUnits.length > 0) {
-        battle.defenderUnits[0].hp -= Math.floor(dmg * atkMod);
-        if (battle.defenderUnits[0].hp <= 0) battle.defenderUnits.shift();
+  const triggerBattleRound = useCallback(() => {
+    // 1. Trigger Animation
+    setBattleAnimState('clashing');
+
+    // 2. Resolve Logic after delay
+    setTimeout(() => {
+        setGameState(prev => {
+            if (!prev.activeBattle || prev.activeBattle.winner) return prev;
+            
+            const battle = { ...prev.activeBattle };
+            const attacker = prev.factions[battle.attackerId];
+            
+            // Damage Calc
+            const dmg = battle.attackerUnits.reduce((acc, u) => acc + u.damage, 0) * (0.8 + Math.random() * 0.4);
+            let atkMod = 1;
+            attacker.traits.forEach(t => { if(t.effectType === 'COMBAT_MOD') atkMod *= t.value; });
+            const finalAtkDmg = Math.floor(dmg * atkMod);
+
+            const defDmg = battle.defenderUnits.reduce((acc, u) => acc + u.damage, 0) * (0.8 + Math.random() * 0.4);
+            const finalDefDmg = Math.floor(defDmg);
+
+            // Apply Damage
+            if (battle.defenderUnits.length > 0) {
+                battle.defenderUnits[0].hp -= finalAtkDmg;
+                if (battle.defenderUnits[0].hp <= 0) battle.defenderUnits.shift();
+            }
+            if (battle.attackerUnits.length > 0) {
+                battle.attackerUnits[0].hp -= finalDefDmg;
+                if (battle.attackerUnits[0].hp <= 0) battle.attackerUnits.shift();
+            }
+
+            battle.round++;
+            battle.logs = [`R${battle.round}: -${finalAtkDmg} vs -${finalDefDmg} HP`, ...battle.logs.slice(0, 5)];
+
+            if (battle.defenderUnits.length === 0) battle.winner = battle.attackerId;
+            else if (battle.attackerUnits.length === 0) battle.winner = battle.defenderId;
+
+            // Auto-pause if ended
+            if (battle.winner) setBattleSpeed(null);
+
+            return { ...prev, activeBattle: battle };
+        });
+
+        // 3. Reset Animation
+        setBattleAnimState('idle');
+    }, 400); // 400ms matches CSS transition
+  }, []);
+
+  // Battle Loop
+  useEffect(() => {
+    let interval: number;
+    if (gameState.phase === Phase.BATTLE && battleSpeed !== null && !gameState.activeBattle?.winner) {
+      interval = window.setInterval(triggerBattleRound, battleSpeed + 450); // Add extra time for animation
     }
-    if (battle.attackerUnits.length > 0) {
-        battle.attackerUnits[0].hp -= Math.floor(defDmg);
-        if (battle.attackerUnits[0].hp <= 0) battle.attackerUnits.shift();
-    }
+    return () => clearInterval(interval);
+  }, [gameState.phase, battleSpeed, gameState.activeBattle?.winner, triggerBattleRound]);
 
-    battle.round++;
-    battle.logs.unshift(`Round ${battle.round}: Atk dealt ${Math.floor(dmg * atkMod)} dmg, Def dealt ${Math.floor(defDmg)} dmg.`);
-
-    // Check win condition
-    if (battle.defenderUnits.length === 0) {
-        battle.winner = battle.attackerId;
-        battle.logs.unshift("Attacker Won!");
-    } else if (battle.attackerUnits.length === 0) {
-        battle.winner = battle.defenderId;
-        battle.logs.unshift("Defender Won!");
-    }
-
-    setGameState(prev => ({ ...prev, activeBattle: battle }));
-  };
 
   const endBattle = () => {
       if (!gameState.activeBattle || !gameState.activeBattle.winner) return;
@@ -289,13 +427,10 @@ function App() {
                   return { ...p, troops: gameState.activeBattle!.defenderUnits };
               }
           }
-          // Remove troops from origin province if attacker moved them
-          // (Simplified: in a real game we'd handle moving troops out of origin properly)
            const ownedProvinces = gameState.provinces.filter(p => p.ownerId === gameState.playerFactionId);
            const attackingProv = ownedProvinces.find(prov => prov.neighbors.includes(targetProvId));
 
            if (winner === gameState.activeBattle?.attackerId && attackingProv && p.id === attackingProv.id) {
-               // They moved to the new province (all of them for this simplified version)
                return { ...p, troops: [] };
            }
 
@@ -307,8 +442,9 @@ function App() {
           phase: Phase.CAMPAIGN,
           provinces: newProvinces,
           activeBattle: null,
-          logs: [`Battle for province finished. Winner: ${gameState.factions[winner].name}`, ...prev.logs]
+          logs: [`Battle finished. Winner: ${gameState.factions[winner].name}`, ...prev.logs]
       }));
+      setBattleSpeed(null);
   };
 
   const buyTech = (tech: Technology) => {
@@ -325,197 +461,248 @@ function App() {
             factions: newFactions,
             logs: [`Researched ${tech.name}.`, ...prev.logs]
         }));
-    } else {
-        alert("Not enough gold!");
     }
   };
 
-  // --- RENDER HELPERS ---
+  // --- RENDERERS ---
 
   const renderMap = () => {
     return (
-      <div className="w-full h-full overflow-auto bg-[#0c0a09] border border-stone-800 rounded relative" ref={scrollRef}>
-          <svg width="1000" height="600" className="bg-[#0c0a09] select-none touch-manipulation">
-            {/* Connections */}
-            {gameState.provinces.map(p => 
-              p.neighbors.map(nId => {
-                const n = gameState.provinces.find(prov => prov.id === nId);
-                if (!n) return null;
-                return (
-                  <line 
-                    key={`${p.id}-${n.id}`} 
-                    x1={p.x} y1={p.y} x2={n.x} y2={n.y} 
-                    stroke="#44403c" strokeWidth="2" opacity="0.5" 
-                  />
-                );
-              })
-            )}
-            
-            {/* Provinces */}
-            {gameState.provinces.map(p => {
-              const owner = gameState.factions[p.ownerId];
-              const isSelected = gameState.selectedProvinceId === p.id;
-              const isPlayerOwned = p.ownerId === gameState.playerFactionId;
+      <div 
+        className="w-full h-full overflow-hidden bg-[#0c0a09] relative bg-stone-pattern" 
+        ref={mapRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+      >
+          {/* Map Controls */}
+          <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
+            <button onClick={() => setViewState(p => ({...p, scale: Math.min(p.scale + 0.2, 3)}))} className="w-10 h-10 bg-stone-800 border border-stone-600 rounded text-stone-200 shadow hover:bg-stone-700">+</button>
+            <button onClick={() => setViewState(p => ({...p, scale: Math.max(p.scale - 0.2, 0.5)}))} className="w-10 h-10 bg-stone-800 border border-stone-600 rounded text-stone-200 shadow hover:bg-stone-700">-</button>
+          </div>
+
+          <svg 
+            width="100%" height="100%" 
+            className="cursor-move"
+          >
+            <g transform={`translate(${viewState.x}, ${viewState.y}) scale(${viewState.scale})`}>
               
-              return (
-                <g key={p.id} onClick={() => selectProvince(p.id)} className="cursor-pointer transition-opacity hover:opacity-80">
-                  <circle 
-                    cx={p.x} cy={p.y} r={isSelected ? 25 : 18} 
-                    fill={owner.color} 
-                    stroke={isSelected ? '#fbbf24' : (isPlayerOwned ? '#fff' : '#000')} 
-                    strokeWidth={isSelected ? 4 : (isPlayerOwned ? 2 : 1)}
-                  />
-                  {/* Unit Indicator */}
-                  {p.troops.length > 0 && (
-                     <rect x={p.x - 6} y={p.y - 6} width="12" height="12" fill="black" stroke="white" strokeWidth="1" />
-                  )}
-                  <text 
-                    x={p.x} y={p.y + 35} 
-                    textAnchor="middle" 
-                    fill="#e7e5e4" 
-                    fontSize="12" 
-                    className="pointer-events-none font-bold drop-shadow-md select-none"
+              {/* Connections */}
+              {gameState.provinces.map(p => 
+                p.neighbors.map(nId => {
+                  const n = gameState.provinces.find(prov => prov.id === nId);
+                  if (!n || p.id > nId) return null; // Draw once per pair
+                  
+                  const isOwnedPath = p.ownerId === n.ownerId && p.ownerId === gameState.playerFactionId;
+                  
+                  return (
+                    <line 
+                      key={`${p.id}-${n.id}`} 
+                      x1={p.x} y1={p.y} x2={n.x} y2={n.y} 
+                      stroke={isOwnedPath ? '#d97706' : '#44403c'} 
+                      strokeWidth={isOwnedPath ? "3" : "1"} 
+                      strokeDasharray={isOwnedPath ? "" : "5,5"}
+                      opacity="0.6" 
+                      className="transition-all duration-500"
+                    />
+                  );
+                })
+              )}
+              
+              {/* Provinces */}
+              {gameState.provinces.map(p => {
+                const owner = gameState.factions[p.ownerId];
+                const isSelected = gameState.selectedProvinceId === p.id;
+                const isPlayerOwned = p.ownerId === gameState.playerFactionId;
+                
+                // Relocation Logic
+                let isRelocationTarget = false;
+                if (gameState.moveSourceId) {
+                    const source = gameState.provinces.find(prov => prov.id === gameState.moveSourceId);
+                    if (source && source.neighbors.includes(p.id) && p.ownerId === gameState.playerFactionId) {
+                        isRelocationTarget = true;
+                    }
+                }
+
+                // Opacity logic for relocation mode
+                const opacity = gameState.moveSourceId && !isRelocationTarget && gameState.moveSourceId !== p.id ? 0.4 : 1;
+                
+                return (
+                  <g 
+                    key={p.id} 
+                    onClick={(e) => { e.stopPropagation(); selectProvince(p.id); }} 
+                    className="transition-all duration-300 cursor-pointer hover:opacity-100"
+                    style={{ opacity }}
                   >
-                    {p.name}
-                  </text>
-                </g>
-              );
-            })}
+                    {/* Glow for selection or target */}
+                    {isSelected && <circle cx={p.x} cy={p.y} r={35} fill="url(#gold-gradient)" opacity="0.3" className="animate-pulse"/>}
+                    {isRelocationTarget && <circle cx={p.x} cy={p.y} r={30} stroke="#10b981" strokeWidth="3" fill="none" className="animate-pulse"/>}
+                    
+                    {/* Province Node */}
+                    <circle 
+                      cx={p.x} cy={p.y} r={isPlayerOwned ? 20 : 16} 
+                      fill={owner.color} 
+                      stroke={isSelected ? '#fbbf24' : (isPlayerOwned ? '#fff' : '#1c1917')} 
+                      strokeWidth={isSelected ? 3 : 2}
+                      className="shadow-xl"
+                    />
+                    
+                    {/* Icon based on Troops */}
+                    {p.troops.length > 0 && (
+                       <text x={p.x} y={p.y + 4} textAnchor="middle" fill={owner.textColor} fontSize="12" fontWeight="bold">⚔️</text>
+                    )}
+
+                    <text 
+                      x={p.x} y={p.y + 35} 
+                      textAnchor="middle" 
+                      fill="#e7e5e4" 
+                      fontSize="12" 
+                      className={`pointer-events-none font-bold select-none text-shadow transition-all ${isSelected ? 'text-amber-400 text-sm' : ''}`}
+                    >
+                      {p.name}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+            <defs>
+              <radialGradient id="gold-gradient">
+                <stop offset="0%" stopColor="#fbbf24" />
+                <stop offset="100%" stopColor="transparent" />
+              </radialGradient>
+            </defs>
           </svg>
       </div>
     );
   };
 
-  const renderTechTree = () => {
+  const renderTechTreeModal = () => {
     if (!gameState.playerFactionId) return null;
     const player = gameState.factions[gameState.playerFactionId];
     const tree = TECH_TREES[player.group];
 
     return (
-        <div className="fixed inset-0 bg-stone-900/95 z-50 overflow-auto p-4 flex flex-col items-center">
-            <div className="w-full max-w-5xl">
-                <div className="flex justify-between items-center mb-8 sticky top-0 bg-stone-900/95 py-4 border-b border-stone-700">
-                    <h2 className="text-3xl font-serif text-amber-500">Research: {player.group}</h2>
-                    <div className="flex items-center gap-4">
-                        <span className="text-amber-300 font-bold">{player.gold} Gold</span>
-                        <button onClick={() => setGameState(p => ({...p, phase: Phase.CAMPAIGN}))} className="px-6 py-2 bg-stone-700 rounded hover:bg-stone-600 text-white font-bold">
-                            Close
-                        </button>
-                    </div>
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8 transition-all animate-in fade-in duration-300">
+            <div className="bg-stone-900 border-2 border-amber-700 w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl rounded-lg overflow-hidden">
+                <div className="p-4 bg-stone-950 border-b border-amber-900 flex justify-between items-center">
+                    <h2 className="text-2xl text-amber-500 font-serif">Imperial Research</h2>
+                    <Button onClick={() => setShowTechTree(false)} variant="neutral">Close</Button>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-10">
+                <div className="flex-1 overflow-auto p-6 bg-parchment">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     {[TechCategory.MILITARY, TechCategory.ECONOMIC, TechCategory.ADMIN].map(cat => (
-                        <div key={cat} className="bg-stone-800 p-4 rounded-lg border border-stone-600 shadow-xl">
-                            <h3 className="text-xl font-serif font-bold mb-6 text-center border-b border-stone-600 pb-2 text-stone-300">{cat}</h3>
-                            <div className="space-y-6">
-                                {tree.filter(t => t.category === cat).map(tech => {
-                                    const unlocked = player.unlockedTechs.includes(tech.id);
-                                    const canUnlock = !unlocked && (tech.prerequisiteId === null || player.unlockedTechs.includes(tech.prerequisiteId));
-                                    return (
-                                        <div key={tech.id} className={`p-4 rounded-lg border-2 transition-all ${
-                                            unlocked ? 'bg-emerald-900/30 border-emerald-700' : 
-                                            canUnlock ? 'bg-stone-900 border-amber-800' : 'bg-stone-900/50 border-stone-700 opacity-60'
-                                        }`}>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="font-bold text-lg text-amber-100">{tech.name}</div>
-                                                {unlocked && <span className="text-emerald-500 text-lg">✓</span>}
-                                            </div>
-                                            <div className="text-sm text-stone-400 mb-4 h-10 leading-tight">{tech.description}</div>
-                                            {!unlocked && (
-                                                <button 
-                                                    disabled={!canUnlock || player.gold < tech.cost}
-                                                    onClick={() => buyTech(tech)}
-                                                    className={`w-full py-2 rounded font-bold text-sm transition-colors ${
-                                                        canUnlock && player.gold >= tech.cost 
-                                                        ? 'bg-amber-700 hover:bg-amber-600 text-white shadow-lg' 
-                                                        : 'bg-stone-700 text-stone-500 cursor-not-allowed'
-                                                    }`}
-                                                >
-                                                    {canUnlock ? `Research (${tech.cost}g)` : (tech.prerequisiteId ? 'Locked (Req. Previous)' : 'Locked')}
-                                                </button>
-                                            )}
+                        <div key={cat} className="flex flex-col gap-4">
+                            <h3 className="text-center font-bold text-stone-800 border-b-2 border-stone-400 pb-2 mb-2 font-serif tracking-widest">{cat}</h3>
+                            {tree.filter(t => t.category === cat).map(tech => {
+                                const unlocked = player.unlockedTechs.includes(tech.id);
+                                const canUnlock = !unlocked && (tech.prerequisiteId === null || player.unlockedTechs.includes(tech.prerequisiteId));
+                                return (
+                                    <div key={tech.id} className={`p-4 rounded border shadow-sm relative overflow-hidden group transition-all ${
+                                        unlocked ? 'bg-emerald-100 border-emerald-500' : 
+                                        canUnlock ? 'bg-white border-amber-600 hover:shadow-md' : 'bg-stone-300 border-stone-400 opacity-70 grayscale'
+                                    }`}>
+                                        <div className="font-bold text-stone-900 flex justify-between">
+                                            {tech.name}
+                                            {unlocked && <span className="text-emerald-700">✓</span>}
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                        <div className="text-xs text-stone-600 my-2 italic">{tech.description}</div>
+                                        {!unlocked && (
+                                            <button 
+                                                disabled={!canUnlock || player.gold < tech.cost}
+                                                onClick={() => buyTech(tech)}
+                                                className={`w-full py-1 text-xs font-bold rounded mt-2 ${
+                                                    canUnlock && player.gold >= tech.cost ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-stone-400 text-stone-600 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                {canUnlock ? `Research (${tech.cost}g)` : 'Locked'}
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     ))}
+                    </div>
                 </div>
             </div>
         </div>
     );
   };
 
-  const renderBattle = () => {
+  const renderBattleModal = () => {
     if (!gameState.activeBattle) return null;
     const active = gameState.activeBattle;
+    const attacker = gameState.factions[active.attackerId];
+    const defender = gameState.factions[active.defenderId];
     
+    // Animation Styles
+    const atkAnim = battleAnimState === 'clashing' ? 'translate-x-12 scale-105' : 'translate-x-0';
+    const defAnim = battleAnimState === 'clashing' ? '-translate-x-12 scale-105' : '-translate-x-0';
+
     return (
-        <div className="flex flex-col h-screen bg-stone-900 text-stone-200">
-            {/* Battle Header */}
-            <div className="bg-stone-800 p-4 border-b border-amber-900 flex justify-between items-center shadow-md">
-              <h2 className="text-lg md:text-2xl font-serif text-red-500">Battle for {gameState.provinces.find(p => p.id === active.provinceId)?.name}</h2>
-              <div className="text-xl font-bold">Round {active.round}</div>
-            </div>
-
-            {/* Main Battle Area */}
-            <div className="flex-1 flex flex-col p-4 gap-4 overflow-hidden relative">
+        <div className="absolute inset-0 z-40 bg-black/90 flex items-center justify-center p-4">
+            <div className="w-full max-w-4xl bg-stone-900 border-2 border-red-900 rounded-lg shadow-2xl overflow-hidden flex flex-col h-[80vh]">
                 
-                {/* Visual Representation */}
-                <div className="flex-1 bg-stone-950 relative border border-stone-700 rounded-lg flex flex-col justify-center items-center overflow-auto">
-                    
-                    <div className="flex flex-col md:flex-row justify-around w-full items-center z-10 p-4 gap-8">
-                        {/* Attacker Column */}
-                        <div className="flex flex-col gap-2 items-center w-full md:w-1/3">
-                            <h3 className="text-blue-400 font-bold mb-4 text-xl">{gameState.factions[active.attackerId].name}</h3>
-                            <div className="flex flex-col gap-1 w-full max-h-60 overflow-y-auto pr-2">
-                              {active.attackerUnits.map((u, i) => (
-                                  <div key={i} className="w-full h-8 bg-blue-900/30 border border-blue-500 flex items-center justify-between px-2 text-xs relative">
-                                      <span className="z-10">{u.type}</span>
-                                      <div className="absolute inset-0 bg-blue-500/20" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
-                                      <span className="z-10 font-mono">{u.hp}HP</span>
-                                  </div>
-                              ))}
-                            </div>
-                            <div className="text-xs text-stone-500 mt-2">Units: {active.attackerUnits.length}</div>
-                        </div>
-
-                        {/* VS Badge */}
-                        <div className="text-4xl font-serif text-red-600 font-bold animate-pulse">VS</div>
-
-                        {/* Defender Column */}
-                        <div className="flex flex-col gap-2 items-center w-full md:w-1/3">
-                            <h3 className="text-red-400 font-bold mb-4 text-xl">{gameState.factions[active.defenderId].name}</h3>
-                            <div className="flex flex-col gap-1 w-full max-h-60 overflow-y-auto pr-2">
-                              {active.defenderUnits.map((u, i) => (
-                                  <div key={i} className="w-full h-8 bg-red-900/30 border border-red-500 flex items-center justify-between px-2 text-xs relative">
-                                      <span className="z-10">{u.type}</span>
-                                      <div className="absolute inset-0 bg-red-500/20" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
-                                      <span className="z-10 font-mono">{u.hp}HP</span>
-                                  </div>
-                              ))}
-                            </div>
-                            <div className="text-xs text-stone-500 mt-2">Units: {active.defenderUnits.length}</div>
-                        </div>
-                    </div>
+                {/* Header */}
+                <div className="h-16 bg-red-950 flex items-center justify-between px-6 border-b border-red-800">
+                    <div className="text-xl font-serif font-bold text-stone-200">{attacker.name}</div>
+                    <div className="text-2xl font-serif text-amber-500 font-bold">VS</div>
+                    <div className="text-xl font-serif font-bold text-stone-200">{defender.name}</div>
                 </div>
 
-                {/* Log & Controls */}
-                <div className="h-40 bg-stone-800 rounded border border-stone-600 flex flex-col md:flex-row">
-                    <div className="flex-1 p-2 overflow-y-auto text-sm font-mono border-b md:border-b-0 md:border-r border-stone-600">
-                        {active.logs.map((l, i) => <div key={i} className="mb-1 text-stone-300">&gt; {l}</div>)}
-                    </div>
-                    <div className="p-4 flex items-center justify-center bg-stone-900 w-full md:w-64">
-                        {!active.winner ? (
-                            <button onClick={resolveBattleRound} className="w-full h-full bg-red-700 hover:bg-red-600 text-white font-serif text-xl rounded shadow-lg transition-transform active:scale-95">
-                                Fight Round
-                            </button>
-                        ) : (
-                            <button onClick={endBattle} className="w-full h-full bg-green-700 hover:bg-green-600 text-white font-serif text-xl rounded shadow-lg transition-transform active:scale-95">
-                                Return to Map
-                            </button>
-                        )}
+                {/* Battlefield */}
+                <div className="flex-1 bg-[url('https://images.unsplash.com/photo-1553531087-b25a0b9a68a3?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center relative">
+                    <div className="absolute inset-0 bg-stone-900/60 backdrop-blur-[2px]"></div>
+                    
+                    <div className="relative z-10 h-full flex flex-row items-center justify-between px-10 gap-10">
+                        {/* Left Army (Attacker) */}
+                        <div className={`flex-1 h-full flex flex-col justify-center gap-2 transition-transform duration-300 ease-in-out ${atkAnim}`}>
+                             {active.attackerUnits.map((u, i) => (
+                                <div key={i} className="bg-blue-900/60 border-l-4 border-blue-500 p-2 text-xs text-blue-100 relative overflow-hidden transition-all duration-300 shadow-md backdrop-blur-sm" style={{opacity: u.hp > 0 ? 1 : 0.2}}>
+                                    <div className="absolute bottom-0 left-0 h-1 bg-blue-500 transition-all duration-300" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
+                                    <div className="flex justify-between relative z-10">
+                                        <span>{u.type}</span>
+                                        <span>{u.hp} HP</span>
+                                    </div>
+                                </div>
+                             ))}
+                        </div>
+
+                        {/* Center Info */}
+                        <div className="w-64 flex flex-col items-center gap-4 z-20">
+                            <div className="bg-black/50 p-4 rounded text-center border border-stone-600 w-full h-40 overflow-hidden text-xs font-mono text-stone-400">
+                                {active.logs.map((l,i) => <div key={i}>{l}</div>)}
+                            </div>
+                            
+                            {!active.winner ? (
+                                <div className="flex flex-col gap-2 w-full">
+                                    <Button onClick={triggerBattleRound} disabled={battleSpeed !== null || battleAnimState !== 'idle'}>Step</Button>
+                                    <div className="flex gap-2 justify-center">
+                                        <Button variant="neutral" onClick={() => setBattleSpeed(null)} disabled={battleSpeed === null} className="flex-1">❚❚</Button>
+                                        <Button variant="neutral" onClick={() => setBattleSpeed(1000)} disabled={battleSpeed === 1000} className="flex-1">▶</Button>
+                                        <Button variant="neutral" onClick={() => setBattleSpeed(200)} disabled={battleSpeed === 200} className="flex-1">▶▶</Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <Button onClick={endBattle} variant="gold" className="w-full animate-pulse">Victory! Return</Button>
+                            )}
+                        </div>
+
+                        {/* Right Army (Defender) */}
+                         <div className={`flex-1 h-full flex flex-col justify-center gap-2 items-end transition-transform duration-300 ease-in-out ${defAnim}`}>
+                             {active.defenderUnits.map((u, i) => (
+                                <div key={i} className="bg-red-900/60 border-r-4 border-red-500 p-2 text-xs text-red-100 relative overflow-hidden w-full text-right transition-all duration-300 shadow-md backdrop-blur-sm" style={{opacity: u.hp > 0 ? 1 : 0.2}}>
+                                    <div className="absolute bottom-0 right-0 h-1 bg-red-500 transition-all duration-300" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
+                                    <div className="flex justify-between relative z-10">
+                                        <span>{u.hp} HP</span>
+                                        <span>{u.type}</span>
+                                    </div>
+                                </div>
+                             ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -523,129 +710,128 @@ function App() {
     );
   };
 
-  const renderCampaign = () => {
+  const renderHUD = () => {
     if (!gameState.playerFactionId) return null;
     const player = gameState.factions[gameState.playerFactionId];
     const selectedProv = gameState.selectedProvinceId ? gameState.provinces.find(p => p.id === gameState.selectedProvinceId) : null;
 
     return (
-        <div className="flex flex-col h-screen bg-stone-900 overflow-hidden">
-            
+        <>
             {/* Top Bar */}
-            <div className="h-14 bg-stone-800 border-b border-amber-900 flex items-center justify-between px-4 shadow-lg shrink-0">
-                <div className="flex items-center gap-4">
-                    <span className="font-serif text-xl text-amber-500 hidden md:inline">{player.name}</span>
-                    <span className="font-serif text-xl text-amber-500 md:hidden">{player.name.substring(0,3)}</span>
-                    <div className="h-6 w-px bg-stone-600 mx-2"></div>
-                    <div className="flex gap-4 text-sm font-bold text-stone-300">
-                        <span className="text-amber-300">💰 {player.gold}</span>
-                        <span className="text-blue-300">👥 {player.manpower}</span>
-                        <span className="text-purple-300">⚖️ {player.stability}%</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2 md:gap-4">
-                     <button 
-                        onClick={() => setGameState(p => ({...p, phase: Phase.TECH_TREE}))}
-                        className="bg-purple-900 hover:bg-purple-800 text-purple-200 px-3 py-1 rounded font-serif shadow border border-purple-700 text-sm"
-                    >
-                        Tech
-                    </button>
-                    <span className="text-stone-400 font-serif hidden md:inline">{gameState.year} BC</span>
-                    <button 
-                        onClick={endTurn}
-                        className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-1 rounded font-serif shadow border border-amber-500"
-                    >
-                        End Turn
-                    </button>
-                </div>
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                
-                {/* Map Area */}
-                <div className="flex-1 bg-stone-950 overflow-hidden flex flex-col relative">
-                    {renderMap()}
-                    
-                    {/* Log Overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black to-transparent pointer-events-none flex flex-col justify-end p-4">
-                        <div className="h-24 overflow-y-auto mask-image-b pointer-events-auto">
-                            {gameState.logs.map((log, i) => (
-                                <div key={i} className="text-xs text-stone-300 drop-shadow-md text-shadow">{log}</div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Sidebar Panel (Bottom on Mobile, Right on Desktop) */}
-                <div className="h-64 md:h-full md:w-80 bg-stone-800 border-t md:border-t-0 md:border-l border-amber-900 flex flex-col shadow-xl shrink-0">
-                    
-                    {/* Tabs / Info Header */}
-                    <div className="bg-stone-900 p-2 text-center font-serif text-amber-500 border-b border-stone-700">
-                        {selectedProv ? selectedProv.name : "Empire Overview"}
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {selectedProv ? (
-                            <>
-                                <div className="space-y-2 text-sm text-stone-300">
-                                    <div className="flex justify-between">
-                                        <span>Owner:</span>
-                                        <span style={{color: gameState.factions[selectedProv.ownerId].color}} className="font-bold">
-                                            {gameState.factions[selectedProv.ownerId].name}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between"><span>Income:</span> <span className="text-amber-300">+{selectedProv.resourceValue}</span></div>
-                                    <div className="flex justify-between"><span>Manpower:</span> <span className="text-blue-300">+{selectedProv.manpowerValue}</span></div>
-                                    <div className="flex justify-between"><span>Defense:</span> <span>{selectedProv.defenseBonus * 10}%</span></div>
-                                    
-                                    <div className="border-t border-stone-700 pt-2 mt-2">
-                                        <div className="mb-2 font-bold">Garrison ({selectedProv.troops.length}):</div>
-                                        <div className="space-y-1 max-h-24 overflow-y-auto">
-                                            {selectedProv.troops.length === 0 && <span className="text-stone-500 italic">Empty</span>}
-                                            {selectedProv.troops.map((u, i) => (
-                                                <div key={i} className="text-xs bg-stone-700 px-2 py-1 rounded flex justify-between">
-                                                    <span>{u.type}</span>
-                                                    <span>{u.hp}HP</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 grid grid-cols-1 gap-2">
-                                    {selectedProv.ownerId === player.id ? (
-                                        <button 
-                                            onClick={recruitUnit}
-                                            className="w-full py-2 bg-green-800 hover:bg-green-700 text-white rounded font-serif text-sm border border-green-600"
-                                        >
-                                            Recruit Infantry (50g, 100m)
-                                        </button>
-                                    ) : (
-                                        <button 
-                                            onClick={declareWarAttack}
-                                            className="w-full py-2 bg-red-800 hover:bg-red-700 text-white rounded font-serif text-sm border border-red-600"
-                                        >
-                                            Attack Province
-                                        </button>
-                                    )}
-                                </div>
-                            </>
-                        ) : (
-                            <div className="text-center text-stone-500 mt-10">
-                                <p>Select a province on the map to view details.</p>
-                                <p className="mt-4 text-xs">Current Traits:</p>
-                                <ul className="text-xs text-amber-200 mt-2">
-                                  {player.traits.map(t => <li key={t.id}>- {t.name} ({t.description})</li>)}
-                                </ul>
+            <div className="absolute top-0 left-0 right-0 h-16 bg-stone-900 border-b-2 border-amber-700 shadow-xl flex items-center justify-between px-6 z-30">
+                <div className="flex items-center gap-6">
+                    <h1 className="text-2xl font-serif text-amber-500 drop-shadow-md hidden md:block">{player.name}</h1>
+                    <div className="flex gap-4 bg-stone-800 px-4 py-1 rounded border border-stone-600">
+                        <Tooltip text="Gold is used for recruiting and buildings">
+                            <div className="flex items-center gap-2 text-amber-300 font-bold">
+                                <span>◎</span> <span>{player.gold}</span>
                             </div>
-                        )}
+                        </Tooltip>
+                        <div className="w-px bg-stone-600"></div>
+                        <Tooltip text="Manpower is required to train units">
+                            <div className="flex items-center gap-2 text-blue-300 font-bold">
+                                <span>👥</span> <span>{player.manpower}</span>
+                            </div>
+                        </Tooltip>
+                        <div className="w-px bg-stone-600"></div>
+                        <Tooltip text="Stability affects revolt risk">
+                            <div className="flex items-center gap-2 text-purple-300 font-bold">
+                                <span>⚖</span> <span>{player.stability}%</span>
+                            </div>
+                        </Tooltip>
                     </div>
                 </div>
+
+                <div className="text-xl font-serif text-stone-400 font-bold tracking-widest">{gameState.year} B.C.</div>
+
+                <div className="flex items-center gap-2">
+                    {gameState.moveSourceId && (
+                         <Button onClick={() => setGameState(p => ({...p, moveSourceId: null}))} variant="neutral" className="animate-pulse border-red-500 text-red-300">
+                             Cancel Move
+                         </Button>
+                    )}
+                    <Button onClick={() => setShowTechTree(true)} variant="neutral">Technology</Button>
+                    <Button onClick={endTurn} variant="gold">End Turn</Button>
+                </div>
             </div>
-        </div>
+
+            {/* Side Panel (Contextual) */}
+            <div className={`absolute top-20 right-4 bottom-4 w-96 bg-parchment rounded-lg shadow-2xl border-2 border-stone-600 z-20 flex flex-col transition-transform duration-300 transform ${selectedProv ? 'translate-x-0' : 'translate-x-[120%]'}`}>
+                {selectedProv && (
+                    <>
+                        <div className="bg-stone-800 p-4 text-center border-b-2 border-amber-700">
+                             <h2 className="text-xl font-serif text-amber-100">{selectedProv.name}</h2>
+                             <div className="text-xs text-stone-400 uppercase tracking-widest mt-1">Province</div>
+                        </div>
+                        
+                        <div className="p-6 text-stone-800 space-y-4 overflow-y-auto flex-1 font-serif">
+                            <div className="flex justify-between items-center border-b border-stone-400 pb-2">
+                                <span>Owner</span>
+                                <span className="font-bold" style={{color: gameState.factions[selectedProv.ownerId].color}}>
+                                    {gameState.factions[selectedProv.ownerId].name}
+                                </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-stone-200/50 p-2 rounded text-center">
+                                    <div className="text-xs text-stone-500">Income</div>
+                                    <div className="font-bold text-lg text-amber-700">+{selectedProv.resourceValue}</div>
+                                </div>
+                                <div className="bg-stone-200/50 p-2 rounded text-center">
+                                    <div className="text-xs text-stone-500">Manpower</div>
+                                    <div className="font-bold text-lg text-blue-800">+{selectedProv.manpowerValue}</div>
+                                </div>
+                            </div>
+
+                            <div className="mt-4">
+                                <h3 className="font-bold mb-2 border-b border-stone-400">Garrison</h3>
+                                <div className="space-y-2">
+                                    {selectedProv.troops.length === 0 && <div className="text-stone-500 italic text-sm">No troops stationed here.</div>}
+                                    {selectedProv.troops.map((u, i) => (
+                                        <div key={i} className="flex justify-between items-center text-sm bg-white/60 p-2 rounded shadow-sm">
+                                            <span>{u.type}</span>
+                                            <div className="h-2 w-16 bg-stone-300 rounded overflow-hidden">
+                                                <div className="h-full bg-green-600" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-stone-300 border-t border-stone-400 flex flex-col gap-2">
+                            {selectedProv.ownerId === player.id ? (
+                                <>
+                                    <Button onClick={recruitUnit} className="w-full">Recruit Legion (50g, 100m)</Button>
+                                    <Button 
+                                        onClick={startRelocation} 
+                                        variant="success" 
+                                        className="w-full"
+                                        disabled={selectedProv.troops.length === 0}
+                                    >
+                                        Relocate Army
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button onClick={declareWarAttack} variant="danger" className="w-full">Declare War & Attack</Button>
+                            )}
+                            <Button variant="neutral" onClick={() => setGameState(p => ({...p, selectedProvinceId: null}))} className="w-full text-xs">Close Panel</Button>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Event Log (Toast style) */}
+            <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-2 w-80 pointer-events-none">
+                {gameState.logs.slice(0, 3).map((log, i) => (
+                    <div key={i} className="bg-black/80 text-stone-200 p-2 rounded border-l-4 border-amber-500 text-sm shadow-lg animate-in slide-in-from-left fade-in duration-500">
+                        {log}
+                    </div>
+                ))}
+            </div>
+        </>
     );
-  };
+  }
 
   // --- MAIN RENDER ---
 
@@ -653,19 +839,20 @@ function App() {
     return (
       <div className="min-h-screen bg-[#0c0a09] flex items-center justify-center p-4 bg-[url('https://images.unsplash.com/photo-1566373733362-7f24523c7b74?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-blend-overlay bg-opacity-90">
         <div className="max-w-4xl w-full bg-stone-900/90 p-8 rounded border-2 border-amber-800 shadow-2xl backdrop-blur-sm">
-          <h1 className="text-4xl md:text-6xl text-center font-serif text-amber-500 mb-2">Imperium Aeterna</h1>
-          <p className="text-center text-stone-400 mb-8 italic">Choose your destiny. Rewrite history.</p>
+          <h1 className="text-5xl md:text-7xl text-center font-serif text-amber-500 mb-2 text-shadow-gold">IMPERIUM AETERNA</h1>
+          <p className="text-center text-stone-400 mb-12 italic font-serif text-lg">"Fortune favors the bold."</p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {(Object.values(gameState.factions) as Faction[]).filter(f => f.id !== FactionId.REBELS).map(f => (
               <button
                 key={f.id}
                 onClick={() => startGame(f.id)}
-                className="p-4 border border-stone-700 rounded hover:border-amber-500 hover:bg-stone-800 transition-all text-left group"
+                className="relative overflow-hidden p-6 border border-stone-700 rounded bg-stone-800 hover:border-amber-500 hover:bg-stone-700 transition-all text-left group shadow-lg hover:-translate-y-1"
               >
-                <div className="font-serif text-xl font-bold mb-1 group-hover:text-amber-400" style={{color: f.color}}>{f.name}</div>
-                <div className="text-xs text-stone-500 mb-2">{f.group}</div>
-                <div className="text-sm text-stone-300">{f.desc}</div>
+                <div className="absolute top-0 right-0 p-2 opacity-10 text-6xl font-serif select-none" style={{color: f.color}}>{f.name[0]}</div>
+                <div className="font-serif text-xl font-bold mb-2 group-hover:text-amber-400" style={{color: f.color}}>{f.name}</div>
+                <div className="text-xs text-stone-500 mb-3 uppercase tracking-wider font-bold">{f.group}</div>
+                <div className="text-sm text-stone-300 leading-relaxed font-serif">{f.desc}</div>
               </button>
             ))}
           </div>
@@ -675,10 +862,11 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-black">
-      {gameState.phase === Phase.TECH_TREE && renderTechTree()}
-      {gameState.phase === Phase.BATTLE && renderBattle()}
-      {(gameState.phase === Phase.CAMPAIGN || gameState.phase === Phase.TECH_TREE) && renderCampaign()}
+    <div className="h-screen w-screen overflow-hidden bg-stone-950 font-sans text-stone-200 select-none">
+      {renderMap()}
+      {renderHUD()}
+      {showTechTree && renderTechTreeModal()}
+      {gameState.phase === Phase.BATTLE && renderBattleModal()}
     </div>
   );
 }

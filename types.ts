@@ -89,6 +89,7 @@ export interface GameState {
   factions: Record<FactionId, Faction>;
   provinces: Province[];
   selectedProvinceId: string | null;
+  moveSourceId: string | null; // For relocation logic
   logs: string[];
   activeBattle: BattleState | null;
   loadingAI: boolean; 

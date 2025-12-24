@@ -7,24 +7,52 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap');
+      
       body {
         font-family: 'Lato', sans-serif;
-        background-color: #1c1917; /* stone-900 */
-        color: #e7e5e4; /* stone-200 */
+        background-color: #0f0e0e; 
+        color: #e7e5e4;
+        overflow: hidden; /* Prevent body scroll, handle in app */
       }
+      
       h1, h2, h3, h4, .font-serif {
         font-family: 'Cinzel', serif;
       }
-      /* Custom scrollbar for game logs */
+
+      /* Custom scrollbar */
       ::-webkit-scrollbar {
-        width: 8px;
+        width: 6px;
+        height: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #292524; 
+        background: #1c1917; 
       }
       ::-webkit-scrollbar-thumb {
         background: #78350f; 
-        border-radius: 4px;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #92400e; 
+      }
+
+      /* Texture Utility Classes */
+      .bg-parchment {
+        background-color: #e7e5e4;
+        background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.15'/%3E%3C/svg%3E");
+      }
+      
+      .bg-stone-pattern {
+        background-color: #1c1917;
+        background-image: radial-gradient(#44403c 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+
+      .text-shadow {
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+      }
+      
+      .text-shadow-gold {
+        text-shadow: 0px 0px 10px rgba(251, 191, 36, 0.5);
       }
     </style>
   <script type="importmap">
