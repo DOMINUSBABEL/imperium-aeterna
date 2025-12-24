@@ -11,12 +11,13 @@ export enum FactionId {
   CARTHAGE = 'CARTHAGE',
   MACEDON = 'MACEDON',
   GAUL = 'GAUL',
-  EGYPT = 'EGYPT', // Ptolemaic
+  EGYPT = 'EGYPT',
   PARTHIA = 'PARTHIA',
   IBERIA = 'IBERIA',
   BRITANNIA = 'BRITANNIA',
   GERMANIA = 'GERMANIA',
-  REBELS = 'REBELS'
+  REBELS = 'REBELS',
+  NEUTRAL = 'NEUTRAL'
 }
 
 export enum TechCategory {
@@ -32,7 +33,8 @@ export interface Technology {
   cost: number;
   category: TechCategory;
   prerequisiteId: string | null;
-  effect: (faction: Faction) => void; // Description of effect handled in logic
+  effect: (faction: Faction) => void;
+  image: string;
 }
 
 export interface RoguelikeTrait {
@@ -46,8 +48,8 @@ export interface RoguelikeTrait {
 export interface Faction {
   id: FactionId;
   name: string;
-  leaderName: string; // New: For the UI
-  group: 'ROMAN' | 'PUNIC' | 'HELLENIC' | 'BARBARIAN' | 'EASTERN';
+  leaderName: string; 
+  group: 'ROMAN' | 'PUNIC' | 'HELLENIC' | 'BARBARIAN' | 'EASTERN' | 'NEUTRAL';
   color: string;
   textColor: string;
   gold: number;
@@ -56,35 +58,64 @@ export interface Faction {
   isPlayer: boolean;
   desc: string;
   unlockedTechs: string[];
-  traits: RoguelikeTrait[]; // Roguelike elements
+  traits: RoguelikeTrait[]; 
   images: {
     leader: string;
     background: string;
   };
 }
 
+export type UnitType = 'INFANTRY' | 'CAVALRY' | 'ARCHER' | 'MILITIA';
+
 export interface Unit {
   id: string;
-  type: 'INFANTRY' | 'CAVALRY' | 'ARCHER';
+  type: UnitType;
+  name: string;
   hp: number;
   maxHp: number;
   damage: number;
   ownerId: FactionId;
 }
 
+export interface Building {
+  id: string;
+  name: string;
+  cost: number;
+  turnsToBuild: number;
+  description: string;
+  icon: string;
+  effect: {
+    gold?: number;
+    manpower?: number;
+    stability?: number;
+    defense?: number;
+  };
+}
+
+export interface Decree {
+  id: string;
+  name: string;
+  description: string;
+  costPerTurn: number; // Can be negative for income
+  effectDescription: string;
+}
+
 export interface Province {
   id: string;
   name: string;
-  x: number; // For SVG map
-  y: number; // For SVG map
+  x: number; 
+  y: number; 
   ownerId: FactionId;
-  neighbors: string[]; // Array of Province IDs
-  resourceValue: number; // Gold per turn
-  manpowerValue: number; // Manpower per turn
+  neighbors: string[]; 
+  resourceValue: number; // Base Gold
+  manpowerValue: number; // Base Manpower
   defenseBonus: number;
   troops: Unit[];
+  buildings: string[]; // Array of Building IDs
+  activeDecreeId: string | null;
   hasRebellionRisk: boolean;
   currentConstruction?: {
+    buildingId: string;
     name: string;
     progress: number;
     total: number;
@@ -99,11 +130,12 @@ export interface GameState {
   factions: Record<FactionId, Faction>;
   provinces: Province[];
   selectedProvinceId: string | null;
-  moveSourceId: string | null; // For relocation logic
+  moveSourceId: string | null; 
   logs: string[];
   activeBattle: BattleState | null;
   loadingAI: boolean; 
-  modalMessage: { title: string; body: string } | null;
+  modalMessage: { title: string; body: string; image?: string } | null;
+  isPaused: boolean; // For in-game menu
 }
 
 export interface BattleState {
