@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   GameState, Phase, FactionId, Faction, Province, Unit, BattleState, 
-  TechCategory, Technology, RoguelikeTrait, UnitType, TerrainType, MapMode
+  TechCategory, Technology, RoguelikeTrait, UnitType, TerrainType, MapMode, Building
 } from './types';
 import { INITIAL_FACTIONS, INITIAL_PROVINCES, TECH_TREES, ROGUELIKE_TRAITS, BUILDINGS, DECREES, UNIT_TYPES } from './constants';
 
@@ -83,6 +83,35 @@ const FACTION_STATS: Record<FactionId, { military: number, industry: number, cul
 
 const MAP_BG_URL = "https://image.pollinations.ai/prompt/ancient%20papyrus%20map%20of%20europe%20mediterranean%20clean%20outline%20sepia%20worn%20edges%20high%20detail?width=1200&height=800&nologo=true";
 
+// --- HELPER FUNCTIONS ---
+
+const generateTerritoryPath = (id: string, cx: number, cy: number, radius: number): string => {
+  const seed = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const points = 8;
+  let d = '';
+  
+  for (let i = 0; i < points; i++) {
+    const angle = (Math.PI * 2 * i) / points;
+    const variance = Math.sin(seed + i * 132) * (radius * 0.3); 
+    const r = radius + variance;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    
+    if (i === 0) d += `M ${x} ${y}`;
+    else {
+      const prevAngle = (Math.PI * 2 * (i - 1)) / points;
+      const prevR = radius + Math.sin(seed + (i - 1) * 132) * (radius * 0.3);
+      const cp1x = cx + Math.cos(prevAngle + 0.2) * (prevR + 10);
+      const cp1y = cy + Math.sin(prevAngle + 0.2) * (prevR + 10);
+      const cp2x = cx + Math.cos(angle - 0.2) * (r + 10);
+      const cp2y = cy + Math.sin(angle - 0.2) * (r + 10);
+      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x} ${y}`;
+    }
+  }
+  d += ' Z';
+  return d;
+};
+
 // --- COMPONENTS ---
 
 const Tooltip = ({ children, text }: { children?: React.ReactNode, text: string }) => (
@@ -142,7 +171,6 @@ function App() {
   
   const [showTechTree, setShowTechTree] = useState(false);
   const [provinceTab, setProvinceTab] = useState<'OVERVIEW' | 'ECONOMY' | 'MILITARY'>('OVERVIEW');
-  const [menuTab, setMenuTab] = useState<'STATS' | 'UNITS' | 'LORE'>('STATS');
   const [techTab, setTechTab] = useState<TechCategory>(TechCategory.MILITARY);
   
   const [battleSpeed, setBattleSpeed] = useState<number | null>(null); 
@@ -150,34 +178,10 @@ function App() {
 
   const mapRef = useRef<HTMLDivElement>(null);
 
-  // --- MEMOIZED CALCULATIONS (TOP LEVEL) ---
+  // --- MEMOIZED CALCULATIONS ---
   
   const provinceShapes = useMemo(() => {
     const shapes: Record<string, string> = {};
-    const generateTerritoryPath = (id: string, cx: number, cy: number, radius: number): string => {
-        const seed = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const points = 8;
-        let d = '';
-        for (let i = 0; i < points; i++) {
-            const angle = (Math.PI * 2 * i) / points;
-            const variance = Math.sin(seed + i * 132) * (radius * 0.3); 
-            const r = radius + variance;
-            const x = cx + Math.cos(angle) * r;
-            const y = cy + Math.sin(angle) * r;
-            if (i === 0) d += `M ${x} ${y}`;
-            else {
-                const prevAngle = (Math.PI * 2 * (i - 1)) / points;
-                const prevR = radius + Math.sin(seed + (i - 1) * 132) * (radius * 0.3);
-                const cp1x = cx + Math.cos(prevAngle + 0.2) * (prevR + 10);
-                const cp1y = cy + Math.sin(prevAngle + 0.2) * (prevR + 10);
-                const cp2x = cx + Math.cos(angle - 0.2) * (r + 10);
-                const cp2y = cy + Math.sin(angle - 0.2) * (r + 10);
-                d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x} ${y}`;
-            }
-        }
-        d += ' Z';
-        return d;
-    };
     INITIAL_PROVINCES.forEach(p => {
         shapes[p.id] = generateTerritoryPath(p.id, p.x, p.y, 40); 
     });
@@ -237,10 +241,11 @@ function App() {
                 } else if (gameState.mapMode === MapMode.ECONOMY) {
                     const val = p.resourceValue;
                     let icon = "";
-                    if (val >= 20) { fillColor = '#eab308'; icon = "💎"; } 
-                    else if (val >= 12) { fillColor = '#ca8a04'; icon = "💰"; } 
-                    else if (val >= 8) { fillColor = '#a16207'; icon = ""; } 
-                    else { fillColor = '#78350f'; icon = "📉"; } 
+                    // Color Grading
+                    if (val >= 20) { fillColor = '#eab308'; icon = "💎"; } // Rich Gold
+                    else if (val >= 12) { fillColor = '#ca8a04'; icon = "💰"; } // Darker Gold
+                    else if (val >= 8) { fillColor = '#a16207'; icon = ""; } // Brown/Bronze
+                    else { fillColor = '#78350f'; icon = "📉"; } // Poor
                     fillOpacity = 0.7;
 
                     economyLabel = (
@@ -259,7 +264,7 @@ function App() {
                 if(p.terrain === TerrainType.DESERT) patternFill = 'url(#pat-desert)';
 
                 const isRelocationTarget = gameState.moveSourceId && (
-                     (gameState.moveSourceId === p.id && false) || 
+                     (gameState.moveSourceId === p.id && false) || // Origin can't be target
                      (gameState.provinces.find(prov => prov.id === gameState.moveSourceId)?.neighbors.includes(p.id) && p.ownerId === gameState.playerFactionId)
                 );
 
@@ -323,7 +328,7 @@ function App() {
     );
   }, [gameState.provinces, gameState.mapMode, gameState.selectedProvinceId, gameState.moveSourceId, provinceShapes]);
 
-  // --- GAME LOGIC FUNCTIONS ---
+  // --- GAME LOGIC ---
 
   const addLog = (text: string) => {
     setGameState(prev => ({
@@ -374,6 +379,32 @@ function App() {
       y: (height / 2) - (y * 1.2)
     });
   };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const scaleAmount = -e.deltaY * 0.001;
+    const newScale = Math.min(Math.max(0.5, viewState.scale + scaleAmount), 3);
+    setViewState(prev => ({ ...prev, scale: newScale }));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if((e.target as HTMLElement).tagName === 'svg' || (e.target as HTMLElement).tagName === 'image' || (e.target as HTMLElement).id === 'map-bg' || (e.target as HTMLElement).classList.contains('clouds-overlay')) {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - viewState.x, y: e.clientY - viewState.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setViewState(prev => ({
+        ...prev,
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      }));
+    }
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
 
   const selectProvince = (id: string | null) => {
     if (gameState.phase !== Phase.CAMPAIGN) return;
@@ -428,30 +459,38 @@ function App() {
   const endTurn = () => {
     const nextTurn = gameState.turn + 1;
     const nextYear = gameState.year - 1; 
+    
     const updatedFactions = { ...gameState.factions };
     const updatedProvinces = gameState.provinces.map(prov => {
       const owner = updatedFactions[prov.ownerId];
       if (owner && owner.id !== FactionId.NEUTRAL && owner.id !== FactionId.REBELS) {
+        
         let goldMod = 1;
         let manpowerMod = 1;
+
         owner.traits.forEach(t => {
             if(t.effectType === 'GOLD_MOD') goldMod += t.value;
             if(t.effectType === 'MANPOWER_MOD') manpowerMod += t.value;
         });
+
         prov.buildings.forEach(bId => {
             const b = BUILDINGS[bId];
             if(b.effect.gold) goldMod += (b.effect.gold / 100); 
         });
+        
         if (prov.activeDecreeId) {
             const d = DECREES[prov.activeDecreeId];
             owner.gold -= d.costPerTurn;
             if (prov.activeDecreeId === 'taxes') goldMod += 0.2;
             if (prov.activeDecreeId === 'levies') manpowerMod += 0.3;
         }
+
         const income = Math.floor(prov.resourceValue * goldMod);
         const manpower = Math.floor(prov.manpowerValue * manpowerMod);
+
         owner.gold += income;
         owner.manpower += manpower;
+        
         if (prov.currentConstruction) {
             prov.currentConstruction.progress += 1;
             if (prov.currentConstruction.progress >= prov.currentConstruction.total) {
@@ -463,7 +502,7 @@ function App() {
       }
       return prov;
     });
-    // Simple AI
+
     Object.keys(updatedFactions).forEach(fid => {
         const f = updatedFactions[fid as FactionId];
         if (!f.isPlayer && f.id !== FactionId.NEUTRAL && f.gold > 100) {
@@ -483,6 +522,7 @@ function App() {
             }
         }
     });
+
     setGameState(prev => ({
       ...prev,
       turn: nextTurn,
@@ -498,14 +538,17 @@ function App() {
     if (!gameState.selectedProvinceId || !gameState.playerFactionId) return;
     const provIndex = gameState.provinces.findIndex(p => p.id === gameState.selectedProvinceId);
     if (provIndex === -1) return;
+
     const prov = gameState.provinces[provIndex];
     const player = gameState.factions[gameState.playerFactionId];
     const unitStats = UNIT_TYPES[type];
+
     if (player.gold >= unitStats.cost && player.manpower >= unitStats.manpower) {
         if(prov.troops.length >= 8) {
              addLog("Province garrison is full!");
              return;
         }
+
         const newUnit: Unit = {
             id: `u_${Date.now()}_${Math.random()}`,
             type: type,
@@ -518,8 +561,10 @@ function App() {
         const newFactions = { ...gameState.factions };
         newFactions[player.id].gold -= unitStats.cost;
         newFactions[player.id].manpower -= unitStats.manpower;
+
         const newProvinces = [...gameState.provinces];
         newProvinces[provIndex].troops.push(newUnit);
+
         setGameState(prev => ({
             ...prev,
             factions: newFactions,
@@ -537,15 +582,36 @@ function App() {
       const prov = gameState.provinces[provIndex];
       const player = gameState.factions[gameState.playerFactionId];
       const building = BUILDINGS[buildingId];
-      if(prov.currentConstruction) { addLog("Already constructing something."); return; }
-      if(prov.buildings.includes(buildingId)) { addLog("Building already exists."); return; }
-      if(player.gold < building.cost) { addLog("Not enough gold."); return; }
+
+      if(prov.currentConstruction) {
+          addLog("Already constructing something.");
+          return;
+      }
+      if(prov.buildings.includes(buildingId)) {
+          addLog("Building already exists.");
+          return;
+      }
+      if(player.gold < building.cost) {
+          addLog("Not enough gold.");
+          return;
+      }
+
       const newFactions = { ...gameState.factions };
       newFactions[player.id].gold -= building.cost;
+
       const newProvinces = [...gameState.provinces];
-      newProvinces[provIndex].currentConstruction = { buildingId: buildingId, name: building.name, progress: 0, total: building.turnsToBuild };
+      newProvinces[provIndex].currentConstruction = {
+          buildingId: buildingId,
+          name: building.name,
+          progress: 0,
+          total: building.turnsToBuild
+      };
+
       setGameState(prev => ({
-          ...prev, factions: newFactions, provinces: newProvinces, logs: [`Started construction of ${building.name}.`, ...prev.logs]
+          ...prev,
+          factions: newFactions,
+          provinces: newProvinces,
+          logs: [`Started construction of ${building.name}.`, ...prev.logs]
       }));
   };
 
@@ -568,16 +634,24 @@ function App() {
       if (!gameState.selectedProvinceId || !gameState.playerFactionId) return;
       const targetProv = gameState.provinces.find(p => p.id === gameState.selectedProvinceId);
       if (!targetProv || targetProv.ownerId === gameState.playerFactionId) return;
+      
       const ownedProvinces = gameState.provinces.filter(p => p.ownerId === gameState.playerFactionId);
-      const validAttackers = ownedProvinces.filter(p => p.neighbors.includes(targetProv.id) && p.troops.length > 0);
+      
+      const validAttackers = ownedProvinces.filter(p => 
+          p.neighbors.includes(targetProv.id) && p.troops.length > 0
+      );
+
       if (validAttackers.length === 0) {
           setGameState(prev => ({...prev, modalMessage: { title: "Cannot Attack", body: "You have no armies in adjacent provinces to launch an invasion from." }}));
           return;
       }
+
       validAttackers.sort((a, b) => b.troops.length - a.troops.length);
       const attackingProv = validAttackers[0];
+      
       const attackers = [...attackingProv.troops];
       const defenders = [...targetProv.troops];
+
       if (defenders.length === 0) {
           const newProvinces = gameState.provinces.map(p => {
               if (p.id === targetProv.id) return { ...p, ownerId: gameState.playerFactionId!, troops: attackers.slice(0, 1) };
@@ -587,17 +661,71 @@ function App() {
           setGameState(prev => ({ ...prev, provinces: newProvinces, logs: [`Captured ${targetProv.name}!`, ...prev.logs] }));
           return;
       }
+
       setGameState(prev => ({
           ...prev, phase: Phase.BATTLE,
-          activeBattle: { attackerId: prev.playerFactionId!, defenderId: targetProv.ownerId, provinceId: targetProv.id, attackerUnits: attackers, defenderUnits: defenders, round: 0, logs: ['Battle started!'], winner: null }
+          activeBattle: { 
+              attackerId: prev.playerFactionId!, 
+              defenderId: targetProv.ownerId, 
+              provinceId: targetProv.id, 
+              attackerUnits: attackers, 
+              defenderUnits: defenders, 
+              round: 0, 
+              logs: ['Battle started!'], 
+              winner: null 
+          }
       }));
   };
+
+  const triggerBattleRound = useCallback(() => {
+    setBattleAnimState('clashing');
+    setTimeout(() => {
+        setGameState(prev => {
+            if (!prev.activeBattle || prev.activeBattle.winner) return prev;
+            const battle = { ...prev.activeBattle };
+            
+            const atkFront = battle.attackerUnits[0];
+            const defFront = battle.defenderUnits[0];
+
+            if (atkFront && defFront) {
+                const dmg = atkFront.damage * (0.8 + Math.random() * 0.4);
+                const defDmg = defFront.damage * (0.8 + Math.random() * 0.4);
+
+                defFront.hp -= Math.floor(dmg);
+                atkFront.hp -= Math.floor(defDmg);
+
+                battle.logs = [`R${battle.round}: ${atkFront.name} deals ${Math.floor(dmg)}, takes ${Math.floor(defDmg)}`, ...battle.logs.slice(0, 5)];
+
+                if (defFront.hp <= 0) battle.defenderUnits.shift();
+                if (atkFront.hp <= 0) battle.attackerUnits.shift();
+            }
+
+            battle.round++;
+
+            if (battle.defenderUnits.length === 0) battle.winner = battle.attackerId;
+            else if (battle.attackerUnits.length === 0) battle.winner = battle.defenderId;
+            if (battle.winner) setBattleSpeed(null);
+            
+            return { ...prev, activeBattle: battle };
+        });
+        setBattleAnimState('idle');
+    }, 400);
+  }, []);
+
+  useEffect(() => {
+    let interval: number;
+    if (gameState.phase === Phase.BATTLE && battleSpeed !== null && !gameState.activeBattle?.winner) {
+      interval = window.setInterval(triggerBattleRound, battleSpeed + 450);
+    }
+    return () => clearInterval(interval);
+  }, [gameState.phase, battleSpeed, gameState.activeBattle?.winner, triggerBattleRound]);
 
   const endBattle = () => {
       if (!gameState.activeBattle || !gameState.activeBattle.winner) return;
       const winner = gameState.activeBattle.winner;
       const targetProvId = gameState.activeBattle.provinceId;
       const isPlayerWinner = winner === gameState.playerFactionId;
+      
       const newProvinces = gameState.provinces.map(p => {
           if (p.id === targetProvId) {
               if (winner === gameState.activeBattle!.attackerId) return { ...p, ownerId: winner, troops: gameState.activeBattle!.attackerUnits };
@@ -614,7 +742,9 @@ function App() {
           modalMessage: { 
               title: isPlayerWinner ? "VICTORY" : "DEFEAT", 
               body: isPlayerWinner ? "The province has been secured. Glory to the Empire!" : "Your legions have been routed. Shame falls upon us.", 
-              image: isPlayerWinner ? "https://image.pollinations.ai/prompt/roman%20legion%20triumph%20parade%20golden%20lighting%20victory?width=600&height=400&nologo=true" : "https://image.pollinations.ai/prompt/ancient%20battlefield%20defeat%20ruins%20fire%20smoke?width=600&height=400&nologo=true" 
+              image: isPlayerWinner 
+                  ? "https://image.pollinations.ai/prompt/roman%20legion%20triumph%20parade%20golden%20lighting%20victory?width=600&height=400&nologo=true" 
+                  : "https://image.pollinations.ai/prompt/ancient%20battlefield%20defeat%20ruins%20fire%20smoke?width=600&height=400&nologo=true" 
           }
       }));
       setBattleSpeed(null);
@@ -631,132 +761,126 @@ function App() {
     }
   };
 
-  // --- CALLBACKS (TOP LEVEL) ---
-
-  const triggerBattleRound = useCallback(() => {
-    setBattleAnimState('clashing');
-    setTimeout(() => {
-        setGameState(prev => {
-            if (!prev.activeBattle || prev.activeBattle.winner) return prev;
-            const battle = { ...prev.activeBattle };
-            const atkFront = battle.attackerUnits[0];
-            const defFront = battle.defenderUnits[0];
-            if (atkFront && defFront) {
-                const dmg = atkFront.damage * (0.8 + Math.random() * 0.4);
-                const defDmg = defFront.damage * (0.8 + Math.random() * 0.4);
-                defFront.hp -= Math.floor(dmg);
-                atkFront.hp -= Math.floor(defDmg);
-                battle.logs = [`R${battle.round}: ${atkFront.name} deals ${Math.floor(dmg)}, takes ${Math.floor(defDmg)}`, ...battle.logs.slice(0, 5)];
-                if (defFront.hp <= 0) battle.defenderUnits.shift();
-                if (atkFront.hp <= 0) battle.attackerUnits.shift();
-            }
-            battle.round++;
-            if (battle.defenderUnits.length === 0) battle.winner = battle.attackerId;
-            else if (battle.attackerUnits.length === 0) battle.winner = battle.defenderId;
-            if (battle.winner) setBattleSpeed(null);
-            return { ...prev, activeBattle: battle };
-        });
-        setBattleAnimState('idle');
-    }, 400);
-  }, []);
-
-  useEffect(() => {
-    let interval: number;
-    if (gameState.phase === Phase.BATTLE && battleSpeed !== null && !gameState.activeBattle?.winner) {
-      interval = window.setInterval(triggerBattleRound, battleSpeed + 450);
-    }
-    return () => clearInterval(interval);
-  }, [gameState.phase, battleSpeed, gameState.activeBattle?.winner, triggerBattleRound]);
-
   // --- RENDERERS ---
 
-  const renderMap = () => (
+  const renderMap = () => {
+    return (
       <div 
         className="w-full h-full overflow-hidden bg-[#0c0a09] relative" 
         ref={mapRef}
-        onMouseDown={(e) => {
-            if((e.target as HTMLElement).tagName === 'svg' || (e.target as HTMLElement).tagName === 'image' || (e.target as HTMLElement).id === 'map-bg' || (e.target as HTMLElement).classList.contains('clouds-overlay')) {
-                setIsDragging(true);
-                setDragStart({ x: e.clientX - viewState.x, y: e.clientY - viewState.y });
-            }
-        }}
-        onMouseMove={(e) => { if(isDragging) setViewState(prev => ({ ...prev, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })); }}
-        onMouseUp={() => setIsDragging(false)}
-        onMouseLeave={() => setIsDragging(false)}
-        onWheel={(e) => {
-            e.preventDefault();
-            const scaleAmount = -e.deltaY * 0.001;
-            setViewState(prev => ({ ...prev, scale: Math.min(Math.max(0.5, prev.scale + scaleAmount), 3) }));
-        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
         onClick={() => selectProvince(null)}
       >
+          {/* Atmosphere Layer */}
           <div className="absolute inset-0 pointer-events-none z-10 clouds-overlay"></div>
           <div className="absolute inset-0 pointer-events-none z-10 bg-gradient-to-t from-stone-900/30 via-transparent to-stone-900/30"></div>
-          
+
+          {/* SVG DEFS */}
+          <svg className="absolute w-0 h-0">
+             <defs>
+                 <pattern id="pat-forest" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
+                     <text x="0" y="8" fontSize="8" fill="#14532d" opacity="0.6">🌲</text>
+                 </pattern>
+                 <pattern id="pat-mountain" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse">
+                     <path d="M6 1 L11 11 L1 11 Z" fill="#444" opacity="0.4" />
+                 </pattern>
+                 <pattern id="pat-hills" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
+                      <circle cx="5" cy="5" r="3" fill="#78350f" opacity="0.3" />
+                 </pattern>
+                 <pattern id="pat-desert" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
+                      <path d="M1 5 Q5 1 9 5" stroke="#92400e" fill="none" opacity="0.3" />
+                 </pattern>
+             </defs>
+          </svg>
+
+          {/* Map Tooltip Layer */}
+          {hoveredProvinceId && (() => {
+             const p = gameState.provinces.find(prov => prov.id === hoveredProvinceId);
+             if(!p) return null;
+             // Calculate screen position
+             const screenX = p.x * viewState.scale + viewState.x;
+             const screenY = p.y * viewState.scale + viewState.y;
+             const owner = gameState.factions[p.ownerId];
+             
+             return (
+               <div 
+                 className="absolute pointer-events-none z-50 bg-[#1c1917]/95 border border-stone-500 p-3 rounded-lg shadow-2xl backdrop-blur text-xs flex flex-col gap-1 w-48 animate-in fade-in duration-100" 
+                 style={{ left: screenX + 25, top: screenY - 25 }}
+               >
+                 <div className="font-serif font-bold text-white text-lg leading-none">{p.name}</div>
+                 <div className="text-orange-500 font-bold uppercase tracking-widest text-[10px] mb-1">{owner.name}</div>
+                 
+                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-stone-400 text-[10px] uppercase font-bold">
+                   <span>Terrain</span> <span className="text-stone-200 text-right">{p.terrain}</span>
+                   <span>Tax</span> <span className="text-stone-200 text-right">{p.resourceValue}</span>
+                   <span>Manpower</span> <span className="text-stone-200 text-right">{p.manpowerValue}</span>
+                 </div>
+
+                 {p.troops.length > 0 && (
+                   <div className="mt-2 pt-2 border-t border-stone-700 flex justify-between items-center">
+                      <span className="text-red-400 font-bold">Garrison</span>
+                      <span className="bg-red-900/50 px-2 rounded text-red-200 font-mono">{p.troops.length} Units</span>
+                   </div>
+                 )}
+               </div>
+             );
+          })()}
+
+          {/* Controls */}
           <div className="absolute top-24 left-4 z-20 flex flex-col gap-2">
             <button onClick={(e) => { e.stopPropagation(); setViewState(p => ({...p, scale: Math.min(p.scale + 0.2, 4)})) }} className="w-10 h-10 bg-black/50 border border-stone-600 rounded text-stone-200 shadow hover:bg-black/70 font-bold text-xl backdrop-blur">+</button>
             <button onClick={(e) => { e.stopPropagation(); setViewState(p => ({...p, scale: Math.max(p.scale - 0.2, 0.4)})) }} className="w-10 h-10 bg-black/50 border border-stone-600 rounded text-stone-200 shadow hover:bg-black/70 font-bold text-xl backdrop-blur">-</button>
             <div className="h-4"></div>
+            {/* Map Mode Switcher */}
             <div className="flex flex-col gap-1 bg-black/60 p-2 rounded border border-stone-700 backdrop-blur">
                 <button onClick={(e) => { e.stopPropagation(); setGameState(p => ({...p, mapMode: MapMode.POLITICAL}))}} className={`w-8 h-8 rounded flex items-center justify-center text-xs ${gameState.mapMode === MapMode.POLITICAL ? 'bg-orange-600 text-white' : 'bg-stone-800 text-stone-400'}`} title="Political Map">👑</button>
                 <button onClick={(e) => { e.stopPropagation(); setGameState(p => ({...p, mapMode: MapMode.TERRAIN}))}} className={`w-8 h-8 rounded flex items-center justify-center text-xs ${gameState.mapMode === MapMode.TERRAIN ? 'bg-green-600 text-white' : 'bg-stone-800 text-stone-400'}`} title="Terrain Map">🏔️</button>
                 <button onClick={(e) => { e.stopPropagation(); setGameState(p => ({...p, mapMode: MapMode.ECONOMY}))}} className={`w-8 h-8 rounded flex items-center justify-center text-xs ${gameState.mapMode === MapMode.ECONOMY ? 'bg-yellow-600 text-white' : 'bg-stone-800 text-stone-400'}`} title="Economic Map">💰</button>
             </div>
           </div>
-          
-          {/* Tooltip */}
-          {hoveredProvinceId && (() => {
-             const p = gameState.provinces.find(prov => prov.id === hoveredProvinceId);
-             if(!p) return null;
-             const screenX = p.x * viewState.scale + viewState.x;
-             const screenY = p.y * viewState.scale + viewState.y;
-             const owner = gameState.factions[p.ownerId];
-             return (
-               <div className="absolute pointer-events-none z-50 bg-[#1c1917]/95 border border-stone-500 p-3 rounded-lg shadow-2xl backdrop-blur text-xs flex flex-col gap-1 w-48 animate-in fade-in duration-100" style={{ left: screenX + 25, top: screenY - 25 }}>
-                 <div className="font-serif font-bold text-white text-lg leading-none">{p.name}</div>
-                 <div className="text-orange-500 font-bold uppercase tracking-widest text-[10px] mb-1">{owner.name}</div>
-                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-stone-400 text-[10px] uppercase font-bold">
-                   <span>Terrain</span> <span className="text-stone-200 text-right">{p.terrain}</span>
-                   <span>Tax</span> <span className="text-stone-200 text-right">{p.resourceValue}</span>
-                 </div>
-               </div>
-             );
-          })()}
 
           <svg width="100%" height="100%" className={`cursor-move ${isDragging ? '' : 'transition-transform duration-300 ease-out'}`}>
-            <defs>
-                 <pattern id="pat-forest" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse"><text x="0" y="8" fontSize="8" fill="#14532d" opacity="0.6">🌲</text></pattern>
-                 <pattern id="pat-mountain" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse"><path d="M6 1 L11 11 L1 11 Z" fill="#444" opacity="0.4" /></pattern>
-                 <pattern id="pat-hills" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="3" fill="#78350f" opacity="0.3" /></pattern>
-                 <pattern id="pat-desert" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M1 5 Q5 1 9 5" stroke="#92400e" fill="none" opacity="0.3" /></pattern>
-            </defs>
             <g transform={`translate(${viewState.x}, ${viewState.y}) scale(${viewState.scale})`} style={{ willChange: 'transform' }}>
               <image href={MAP_BG_URL} x="0" y="0" width="1200" height="800" opacity="0.6" id="map-bg" />
               {mapContent}
             </g>
           </svg>
       </div>
-  );
+    );
+  };
 
   const renderMainMenu = () => {
+    // If no faction selected, show selection
     if (!previewFactionId) {
         return (
             <div className="min-h-screen bg-[#0f0e0e] flex flex-col items-center justify-center p-4 relative overflow-hidden">
                 <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1552566626-52f8b828add9?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 animate-pulse-slow"></div>
                 <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black"></div>
                 <div className="absolute inset-0 clouds-overlay"></div>
+
                 <div className="absolute top-0 w-full p-8 flex justify-between items-center z-10">
                     <h1 className="text-5xl font-bold text-white tracking-[0.3em] font-serif text-shadow-gold border-b-2 border-orange-900/50 pb-4">IMPERIUM AETERNA</h1>
                 </div>
+                
+                <div className="z-10 text-center mb-8">
+                    <h2 className="text-xl text-orange-500 font-serif tracking-widest uppercase">Select your Empire</h2>
+                </div>
+
                 <div className="flex gap-8 overflow-x-auto w-full max-w-[90vw] px-8 py-12 snap-x no-scrollbar pb-16 z-10 items-center h-[60vh]">
                     {(Object.values(gameState.factions) as Faction[]).filter(f => f.id !== FactionId.REBELS && f.id !== FactionId.NEUTRAL).map(f => (
                         <div key={f.id} onClick={() => setPreviewFactionId(f.id)} className="min-w-[300px] h-[450px] bg-[#1c1917] rounded-sm border-2 border-[#292524] overflow-hidden relative group cursor-pointer hover:border-orange-600 transition-all snap-center hover:-translate-y-4 duration-500 shadow-2xl hover:shadow-orange-900/50">
                             <div className="h-full relative">
                                 <img src={f.images.leader} className="w-full h-full object-cover transition-transform duration-[2s] group-hover:scale-110 opacity-70 group-hover:opacity-100 grayscale group-hover:grayscale-0" alt={f.name} />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent"></div>
+                                
                                 <div className="absolute bottom-0 w-full p-6 flex flex-col items-center text-center">
                                     <h2 className="text-3xl font-serif text-white font-bold mb-1 drop-shadow-lg">{f.name}</h2>
                                     <p className="text-orange-500 font-bold uppercase tracking-[0.2em] text-[10px] mb-4">{f.leaderName}</p>
+                                    <div className="text-xs text-stone-400 italic opacity-0 group-hover:opacity-100 transition-opacity">Click to View</div>
                                 </div>
                             </div>
                         </div>
@@ -765,24 +889,36 @@ function App() {
             </div>
         );
     }
+
+    // Modal view "Egypt Style"
     const f = gameState.factions[previewFactionId];
     const stats = FACTION_STATS[previewFactionId];
+
     return (
       <div className="min-h-screen bg-[#0f0e0e] flex items-center justify-center p-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/black-scales.png')] opacity-20 z-0"></div>
+        
+        {/* Top Navigation */}
         <div className="absolute top-0 w-full p-8 flex justify-between items-center z-20">
              <button onClick={() => setPreviewFactionId(null)} className="bg-[#1c1917] border border-[#444] w-12 h-12 flex items-center justify-center rounded text-2xl text-stone-400 hover:text-white hover:border-orange-500 transition-all">←</button>
              <h1 className="text-4xl text-[#fbbf24] font-serif font-bold tracking-[0.1em] text-shadow-gold">CHOOSE EMPIRE</h1>
              <button className="bg-[#1c1917] border border-[#444] w-12 h-12 flex items-center justify-center rounded text-2xl text-stone-400 hover:text-white">⚙️</button>
         </div>
+
+        {/* Main Content Card */}
         <div className="z-10 flex flex-col md:flex-row gap-8 w-full max-w-6xl h-[70vh] items-center">
+            
+            {/* Left: Leader Card */}
             <div className="h-[600px] w-full md:w-[400px] relative border-4 border-[#fbbf24] rounded-xl overflow-hidden shadow-[0_0_30px_rgba(251,191,36,0.2)] bg-black">
+                 {/* Corner Ornaments */}
                  <div className="absolute top-2 left-2 w-8 h-8 border-t-2 border-l-2 border-[#fbbf24] z-20"></div>
                  <div className="absolute top-2 right-2 w-8 h-8 border-t-2 border-r-2 border-[#fbbf24] z-20"></div>
                  <div className="absolute bottom-2 left-2 w-8 h-8 border-b-2 border-l-2 border-[#fbbf24] z-20"></div>
                  <div className="absolute bottom-2 right-2 w-8 h-8 border-b-2 border-r-2 border-[#fbbf24] z-20"></div>
+                 
                  <img src={f.images.leader} className="w-full h-full object-cover opacity-90" />
                  <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                 
                  <div className="absolute bottom-10 w-full text-center">
                      <h2 className="text-5xl font-serif text-[#fef3c7] font-bold drop-shadow-lg mb-2">{f.name}</h2>
                      <div className="flex items-center justify-center gap-4">
@@ -792,42 +928,54 @@ function App() {
                      </div>
                  </div>
             </div>
+
+            {/* Right: Info Panel */}
             <div className="flex-1 h-[600px] flex flex-col pt-8">
+                 {/* Tabs (Visual only for now, could be interactive) */}
                  <div className="flex gap-12 border-b border-[#444] mb-8 pb-4 mx-4">
-                     {['STATS', 'UNITS', 'LORE'].map(t => (
-                         <span key={t} onClick={() => setMenuTab(t as any)} className={`font-bold uppercase tracking-widest cursor-pointer pb-4 px-2 transition-colors ${menuTab === t ? 'text-[#fbbf24] border-b-2 border-[#fbbf24]' : 'text-stone-500 hover:text-stone-300'}`}>{t}</span>
-                     ))}
+                     <span className="text-[#fbbf24] font-bold uppercase tracking-widest border-b-2 border-[#fbbf24] pb-4 px-2">Stats</span>
+                     <span className="text-stone-500 font-bold uppercase tracking-widest hover:text-stone-300 cursor-pointer pb-4 px-2">Units</span>
+                     <span className="text-stone-500 font-bold uppercase tracking-widest hover:text-stone-300 cursor-pointer pb-4 px-2">Lore</span>
                  </div>
-                 {menuTab === 'STATS' && (
-                     <div className="grid grid-cols-3 gap-4 mb-8">
-                         {[{l:'Military',v:stats?.military,i:'⚔️'},{l:'Industry',v:stats?.industry,i:'🏭'},{l:'Culture',v:stats?.culture,i:'📦'}].map(s => (
-                             <div key={s.l} className="bg-[#1c1917] border border-[#fbbf24]/30 rounded-lg p-6 flex flex-col items-center text-center shadow-lg bg-gradient-to-b from-[#292524] to-[#1c1917]">
-                                 <span className="text-4xl mb-3 text-[#fbbf24]">{s.i}</span>
-                                 <span className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">{s.l}</span>
-                                 <span className="text-3xl font-serif text-white">{s.v || 50}</span>
-                             </div>
-                         ))}
+
+                 {/* Stats Grid */}
+                 <div className="grid grid-cols-3 gap-4 mb-8">
+                     <div className="bg-[#1c1917] border border-[#fbbf24]/30 rounded-lg p-6 flex flex-col items-center text-center shadow-lg bg-gradient-to-b from-[#292524] to-[#1c1917]">
+                         <span className="text-4xl mb-3 text-[#fbbf24]">⚔️</span>
+                         <span className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">Military</span>
+                         <span className="text-3xl font-serif text-white">{stats?.military || 50}</span>
                      </div>
-                 )}
-                 {menuTab === 'UNITS' && (
-                     <div className="bg-[#1c1917] border border-stone-700 rounded-lg p-1 flex mb-8 h-32 relative group overflow-hidden">
-                         <div className="w-32 h-full shrink-0 relative">
-                             <img src={stats?.unitImage || "https://image.pollinations.ai/prompt/roman%20gladius%20sword?width=200&height=200&nologo=true"} className="w-full h-full object-cover rounded-l" />
-                             <div className="absolute inset-0 border border-[#fbbf24]/50 rounded-l"></div>
-                         </div>
-                         <div className="p-4 flex flex-col justify-center">
-                             <h3 className="text-[#fef3c7] font-serif text-xl font-bold mb-1">{stats?.unitName || 'Legionary'}</h3>
-                             <p className="text-stone-400 text-xs leading-relaxed">{stats?.unitDesc || 'Standard infantry unit.'}</p>
-                         </div>
+                     <div className="bg-[#1c1917] border border-[#fbbf24]/30 rounded-lg p-6 flex flex-col items-center text-center shadow-lg bg-gradient-to-b from-[#292524] to-[#1c1917]">
+                         <span className="text-4xl mb-3 text-[#fbbf24]">🏭</span>
+                         <span className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">Industry</span>
+                         <span className="text-3xl font-serif text-white">{stats?.industry || 50}</span>
                      </div>
-                 )}
-                 {menuTab === 'LORE' && (
-                     <div className="p-4 text-stone-300 text-sm leading-loose italic bg-[#1c1917] rounded border border-stone-700">
-                         "{f.desc} A mighty empire destined to rule the known world..."
+                     <div className="bg-[#1c1917] border border-[#fbbf24]/30 rounded-lg p-6 flex flex-col items-center text-center shadow-lg bg-gradient-to-b from-[#292524] to-[#1c1917]">
+                         <span className="text-4xl mb-3 text-[#fbbf24]">📦</span>
+                         <span className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-1">Culture</span>
+                         <span className="text-3xl font-serif text-white">{stats?.culture || 50}</span>
                      </div>
-                 )}
+                 </div>
+
+                 {/* Unique Unit Section */}
+                 <div className="bg-[#1c1917] border border-stone-700 rounded-lg p-1 flex mb-8 h-32 relative group overflow-hidden">
+                     <div className="w-32 h-full shrink-0 relative">
+                         <img src={stats?.unitImage || "https://image.pollinations.ai/prompt/roman%20gladius%20sword?width=200&height=200&nologo=true"} className="w-full h-full object-cover rounded-l" />
+                         <div className="absolute inset-0 border border-[#fbbf24]/50 rounded-l"></div>
+                     </div>
+                     <div className="p-4 flex flex-col justify-center">
+                         <h3 className="text-[#fef3c7] font-serif text-xl font-bold mb-1">{stats?.unitName || 'Legionary'}</h3>
+                         <p className="text-stone-400 text-xs leading-relaxed">{stats?.unitDesc || 'Standard infantry unit.'}</p>
+                     </div>
+                 </div>
+
                  <div className="mt-auto flex justify-center">
-                     <button onClick={() => startGame(previewFactionId!)} className="bg-gradient-to-b from-[#f59e0b] to-[#ea580c] w-full max-w-md py-4 rounded-lg border-t border-[#fcd34d] shadow-[0_4px_20px_rgba(234,88,12,0.4)] text-white font-bold text-xl uppercase tracking-widest hover:scale-105 transition-transform flex items-center justify-center gap-4"><span>⚔️</span> Start Conquest</button>
+                     <button 
+                        onClick={() => startGame(previewFactionId!)} 
+                        className="bg-gradient-to-b from-[#f59e0b] to-[#ea580c] w-full max-w-md py-4 rounded-lg border-t border-[#fcd34d] shadow-[0_4px_20px_rgba(234,88,12,0.4)] text-white font-bold text-xl uppercase tracking-widest hover:scale-105 transition-transform flex items-center justify-center gap-4"
+                     >
+                         <span>⚔️</span> Start Conquest
+                     </button>
                  </div>
             </div>
         </div>
@@ -839,59 +987,108 @@ function App() {
     if (!gameState.selectedProvinceId) return null;
     const p = gameState.provinces.find(prov => prov.id === gameState.selectedProvinceId);
     if (!p) return null;
+
     const owner = gameState.factions[p.ownerId];
     const isOwner = p.ownerId === gameState.playerFactionId;
-    const isNeighbor = gameState.provinces.filter(prov => prov.ownerId === gameState.playerFactionId).some(prov => prov.neighbors.includes(p.id));
+    const isNeighbor = gameState.provinces
+        .filter(prov => prov.ownerId === gameState.playerFactionId)
+        .some(prov => prov.neighbors.includes(p.id));
+
     return (
         <div className="absolute top-28 left-4 w-96 max-h-[calc(100vh-8rem)] overflow-y-auto bg-[#1c1917]/95 border border-[#444] rounded-lg shadow-2xl backdrop-blur-md animate-in slide-in-from-left-4 duration-300 custom-scrollbar z-30">
+            {/* Header with Image Background */}
             <div className="h-32 relative group">
+                 {/* Fallback image or procedural logic */}
                  <div className={`absolute inset-0 bg-gradient-to-b ${p.terrain === 'FOREST' ? 'from-green-900' : p.terrain === 'DESERT' ? 'from-amber-900' : 'from-stone-800'} to-[#1c1917] opacity-80`}></div>
                  <div className="absolute bottom-4 left-6 z-10">
                     <h2 className="text-3xl font-serif text-white font-bold drop-shadow-md">{p.name}</h2>
-                    <span className="text-orange-500 font-bold text-xs uppercase tracking-widest flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{backgroundColor: owner.color}}></span>{owner.name} Province</span>
+                    <span className="text-orange-500 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{backgroundColor: owner.color}}></span>
+                        {owner.name} Province
+                    </span>
                  </div>
                  <button onClick={() => selectProvince(null)} className="absolute top-2 right-2 text-stone-400 hover:text-white w-8 h-8 flex items-center justify-center bg-black/50 rounded-full">✕</button>
             </div>
+
+            {/* Tabs */}
             <div className="flex border-b border-[#333]">
-                {['OVERVIEW', 'ECONOMY', 'MILITARY'].map(tab => (
-                    <button key={tab} onClick={() => setProvinceTab(tab as any)} className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest ${provinceTab === tab ? 'text-orange-500 border-b-2 border-orange-500 bg-white/5' : 'text-stone-500 hover:text-stone-300'}`}>{tab}</button>
-                ))}
+                <button onClick={() => setProvinceTab('OVERVIEW')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest ${provinceTab === 'OVERVIEW' ? 'text-orange-500 border-b-2 border-orange-500 bg-white/5' : 'text-stone-500 hover:text-stone-300'}`}>Overview</button>
+                <button onClick={() => setProvinceTab('ECONOMY')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest ${provinceTab === 'ECONOMY' ? 'text-orange-500 border-b-2 border-orange-500 bg-white/5' : 'text-stone-500 hover:text-stone-300'}`}>Economy</button>
+                <button onClick={() => setProvinceTab('MILITARY')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-widest ${provinceTab === 'MILITARY' ? 'text-orange-500 border-b-2 border-orange-500 bg-white/5' : 'text-stone-500 hover:text-stone-300'}`}>Military</button>
             </div>
+
             <div className="p-6 space-y-6">
                 {provinceTab === 'OVERVIEW' && (
                     <>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-black/40 p-3 rounded border border-stone-700"><span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Tax</span><span className="text-xl text-[#fbbf24] font-serif font-bold">+{p.resourceValue}</span></div>
-                            <div className="bg-black/40 p-3 rounded border border-stone-700"><span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Manpower</span><span className="text-xl text-blue-400 font-serif font-bold">+{p.manpowerValue}</span></div>
-                            <div className="bg-black/40 p-3 rounded border border-stone-700"><span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Terrain</span><span className="text-white font-serif">{TERRAIN_ICONS[p.terrain]} {p.terrain}</span></div>
-                            <div className="bg-black/40 p-3 rounded border border-stone-700"><span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Defense</span><span className="text-white font-serif">+{p.defenseBonus * 10}%</span></div>
+                            <div className="bg-black/40 p-3 rounded border border-stone-700">
+                                <span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Tax Income</span>
+                                <span className="text-xl text-[#fbbf24] font-serif font-bold">+{p.resourceValue}</span>
+                            </div>
+                            <div className="bg-black/40 p-3 rounded border border-stone-700">
+                                <span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Manpower</span>
+                                <span className="text-xl text-blue-400 font-serif font-bold">+{p.manpowerValue}</span>
+                            </div>
+                             <div className="bg-black/40 p-3 rounded border border-stone-700">
+                                <span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Terrain</span>
+                                <span className="text-white font-serif">{TERRAIN_ICONS[p.terrain]} {p.terrain}</span>
+                            </div>
+                             <div className="bg-black/40 p-3 rounded border border-stone-700">
+                                <span className="text-stone-400 text-[10px] uppercase font-bold block mb-1">Defense</span>
+                                <span className="text-white font-serif">+{p.defenseBonus * 10}%</span>
+                            </div>
                         </div>
+
+                        {/* Actions */}
                         <div className="space-y-3 pt-4 border-t border-[#333]">
-                            {!isOwner && isNeighbor && <Button onClick={declareWarAttack} variant="danger" className="w-full py-4 text-lg shadow-lg shadow-red-900/20">⚔️ Declare War</Button>}
-                            {!isOwner && p.ownerId === FactionId.NEUTRAL && isNeighbor && <Button onClick={colonizeProvince} variant="success" className="w-full py-3">Colonize (200 Gold)</Button>}
-                            {isOwner && <Button onClick={startRelocation} variant="neutral" className="w-full py-3 border-emerald-700 text-emerald-100 hover:bg-emerald-900">Move Army (Select Target)</Button>}
+                            {!isOwner && isNeighbor && (
+                                <Button onClick={declareWarAttack} variant="danger" className="w-full py-4 text-lg shadow-lg shadow-red-900/20">⚔️ Declare War</Button>
+                            )}
+                            {!isOwner && p.ownerId === FactionId.NEUTRAL && isNeighbor && (
+                                <Button onClick={colonizeProvince} variant="success" className="w-full py-3">Colonize (200 Gold)</Button>
+                            )}
+                            {isOwner && (
+                                <Button onClick={startRelocation} variant="neutral" className="w-full py-3 border-emerald-700 text-emerald-100 hover:bg-emerald-900">Move Army (Select Target)</Button>
+                            )}
                         </div>
                     </>
                 )}
+
                 {provinceTab === 'ECONOMY' && isOwner && (
                     <div className="space-y-6">
                         <div>
                             <h4 className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-3">Construction</h4>
                             {p.currentConstruction ? (
                                 <div className="bg-stone-800 p-4 rounded border border-stone-600">
-                                    <div className="flex justify-between mb-2 text-sm"><span>Building {p.currentConstruction.name}...</span><span className="text-orange-400">{p.currentConstruction.progress}/{p.currentConstruction.total} Turns</span></div>
-                                    <div className="h-1 bg-stone-700 rounded-full overflow-hidden"><div className="h-full bg-orange-500" style={{width: `${(p.currentConstruction.progress/p.currentConstruction.total)*100}%`}}></div></div>
+                                    <div className="flex justify-between mb-2 text-sm">
+                                        <span>Building {p.currentConstruction.name}...</span>
+                                        <span className="text-orange-400">{p.currentConstruction.progress}/{p.currentConstruction.total} Turns</span>
+                                    </div>
+                                    <div className="h-1 bg-stone-700 rounded-full overflow-hidden">
+                                        <div className="h-full bg-orange-500" style={{width: `${(p.currentConstruction.progress/p.currentConstruction.total)*100}%`}}></div>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 gap-2">
-                                    {Object.values(BUILDINGS).map(b => {
+                                    {Object.values(BUILDINGS).map((b: Building) => {
                                         const canAfford = gameState.factions[gameState.playerFactionId!].gold >= b.cost;
                                         const hasBuilt = p.buildings.includes(b.id);
                                         return (
-                                            <button key={b.id} onClick={() => startBuilding(b.id)} disabled={!canAfford || hasBuilt} className={`flex items-center gap-3 p-3 rounded border text-left transition-all ${hasBuilt ? 'bg-green-900/20 border-green-800 opacity-60' : 'bg-stone-800 border-stone-700 hover:border-orange-500'}`}>
+                                            <button 
+                                                key={b.id} 
+                                                onClick={() => startBuilding(b.id)} 
+                                                disabled={!canAfford || hasBuilt}
+                                                className={`flex items-center gap-3 p-3 rounded border text-left transition-all ${hasBuilt ? 'bg-green-900/20 border-green-800 opacity-60' : 'bg-stone-800 border-stone-700 hover:border-orange-500'}`}
+                                            >
                                                 <div className="text-2xl">{b.icon}</div>
-                                                <div className="flex-1"><div className="font-bold text-sm text-stone-200">{b.name}</div><div className="text-[10px] text-stone-500">{b.description}</div></div>
-                                                <div className="text-right"><div className="text-orange-400 font-bold text-xs">{b.cost}</div>{hasBuilt && <div className="text-green-500 text-[10px]">Built</div>}</div>
+                                                <div className="flex-1">
+                                                    <div className="font-bold text-sm text-stone-200">{b.name}</div>
+                                                    <div className="text-[10px] text-stone-500">{b.description}</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-orange-400 font-bold text-xs">{b.cost}</div>
+                                                    {hasBuilt && <div className="text-green-500 text-[10px]">Built</div>}
+                                                </div>
                                             </button>
                                         );
                                     })}
@@ -900,20 +1097,33 @@ function App() {
                         </div>
                     </div>
                 )}
+
                  {provinceTab === 'MILITARY' && (
                     <div className="space-y-4">
                         <div className="bg-stone-900/50 p-4 rounded border border-stone-700 min-h-[100px]">
-                             <h4 className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-3 flex justify-between"><span>Garrison</span><span>{p.troops.length}/8</span></h4>
+                             <h4 className="text-stone-400 text-xs font-bold uppercase tracking-widest mb-3 flex justify-between">
+                                 <span>Garrison</span>
+                                 <span>{p.troops.length}/8</span>
+                             </h4>
                              <div className="space-y-2">
                                 {p.troops.length === 0 && <span className="text-stone-600 text-sm italic text-center block py-4">No troops stationed here.</span>}
                                 {p.troops.map((u, i) => (
                                     <div key={i} className="flex items-center justify-between bg-black/40 p-2 rounded border border-stone-800">
-                                        <div className="flex items-center gap-3"><span className="text-xl">{UNIT_ICONS[u.type]}</span><div><div className="text-sm font-bold text-stone-300">{u.name}</div><div className="text-[10px] text-stone-500">HP: {u.hp}/{u.maxHp} | DMG: {u.damage}</div></div></div>
-                                        <div className="h-1 w-12 bg-red-900/50 rounded-full overflow-hidden"><div className="h-full bg-red-500" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div></div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xl">{UNIT_ICONS[u.type]}</span>
+                                            <div>
+                                                <div className="text-sm font-bold text-stone-300">{u.name}</div>
+                                                <div className="text-[10px] text-stone-500">HP: {u.hp}/{u.maxHp} | DMG: {u.damage}</div>
+                                            </div>
+                                        </div>
+                                        <div className="h-1 w-12 bg-red-900/50 rounded-full overflow-hidden">
+                                            <div className="h-full bg-red-500" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
+                                        </div>
                                     </div>
                                 ))}
                              </div>
                         </div>
+
                         {isOwner && (
                             <div className="grid grid-cols-2 gap-2 mt-4">
                                 {Object.keys(UNIT_TYPES).filter(k => k !== 'MILITIA').map((typeKey) => {
@@ -921,8 +1131,15 @@ function App() {
                                     const u = UNIT_TYPES[type];
                                     const canAfford = gameState.factions[gameState.playerFactionId!].gold >= u.cost && gameState.factions[gameState.playerFactionId!].manpower >= u.manpower;
                                     return (
-                                        <button key={type} onClick={() => recruitUnit(type)} disabled={!canAfford} className="bg-stone-800 hover:bg-stone-700 border border-stone-600 p-2 rounded flex flex-col items-center gap-1 disabled:opacity-50">
-                                            <span className="text-2xl">{UNIT_ICONS[type]}</span><span className="text-[10px] font-bold text-stone-300">{u.name}</span><span className="text-[10px] text-orange-400">{u.cost} G / {u.manpower} MP</span>
+                                        <button 
+                                            key={type} 
+                                            onClick={() => recruitUnit(type)} 
+                                            disabled={!canAfford}
+                                            className="bg-stone-800 hover:bg-stone-700 border border-stone-600 p-2 rounded flex flex-col items-center gap-1 disabled:opacity-50"
+                                        >
+                                            <span className="text-2xl">{UNIT_ICONS[type]}</span>
+                                            <span className="text-[10px] font-bold text-stone-300">{u.name}</span>
+                                            <span className="text-[10px] text-orange-400">{u.cost} G / {u.manpower} MP</span>
                                         </button>
                                     )
                                 })}
@@ -941,44 +1158,96 @@ function App() {
       const attacker = gameState.factions[battle.attackerId];
       const defender = gameState.factions[battle.defenderId];
       const battleProv = gameState.provinces.find(p => p.id === battle.provinceId);
+
       return (
         <div className="absolute inset-0 z-40 bg-black/80 flex items-center justify-center p-8 backdrop-blur-md animate-in fade-in duration-500">
             <div className="w-full max-w-5xl h-[80vh] bg-[#1c1917] border-2 border-orange-900/50 rounded-xl shadow-2xl overflow-hidden flex flex-col relative">
+                
+                {/* Battle Header */}
                 <div className="h-24 bg-gradient-to-r from-red-900/40 via-black to-blue-900/40 border-b border-[#333] flex items-center justify-between px-12 shrink-0">
-                    <div className="flex items-center gap-4"><img src={attacker.images.leader} className="w-16 h-16 rounded-full border-2 border-red-500 object-cover" /><div><div className="text-red-500 font-bold uppercase tracking-widest text-xs">Attacker</div><div className="text-2xl font-serif text-white">{attacker.name}</div></div></div>
-                    <div className="flex flex-col items-center"><div className="text-3xl font-serif text-stone-500 font-bold">VS</div><div className="text-xs text-stone-600 uppercase tracking-widest">Battle of {battleProv?.name}</div></div>
-                    <div className="flex items-center gap-4 text-right"><div><div className="text-blue-500 font-bold uppercase tracking-widest text-xs">Defender</div><div className="text-2xl font-serif text-white">{defender.name}</div></div><img src={defender.images.leader} className="w-16 h-16 rounded-full border-2 border-blue-500 object-cover" /></div>
+                    <div className="flex items-center gap-4">
+                        <img src={attacker.images.leader} className="w-16 h-16 rounded-full border-2 border-red-500 object-cover" />
+                        <div>
+                             <div className="text-red-500 font-bold uppercase tracking-widest text-xs">Attacker</div>
+                             <div className="text-2xl font-serif text-white">{attacker.name}</div>
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-center">
+                        <div className="text-3xl font-serif text-stone-500 font-bold">VS</div>
+                        <div className="text-xs text-stone-600 uppercase tracking-widest">Battle of {battleProv?.name}</div>
+                    </div>
+                     <div className="flex items-center gap-4 text-right">
+                        <div>
+                             <div className="text-blue-500 font-bold uppercase tracking-widest text-xs">Defender</div>
+                             <div className="text-2xl font-serif text-white">{defender.name}</div>
+                        </div>
+                        <img src={defender.images.leader} className="w-16 h-16 rounded-full border-2 border-blue-500 object-cover" />
+                    </div>
                 </div>
+
+                {/* Battlefield Visual */}
                 <div className="flex-1 bg-[url('https://image.pollinations.ai/prompt/ancient%20battlefield%20panorama%20armies%20clashing%20dust%20cinematic?width=1024&height=512&nologo=true')] bg-cover bg-center relative">
                     <div className="absolute inset-0 bg-black/60"></div>
+                    
+                    {/* Unit Cards */}
                     <div className="absolute inset-0 flex justify-between items-center px-20">
+                        {/* Attacker Stack */}
                         <div className="w-64 space-y-2">
                              {battle.attackerUnits.slice(0, 5).map((u, i) => (
                                  <div key={u.id} className={`bg-red-900/80 border border-red-700 p-3 rounded flex items-center gap-3 transition-all duration-300 ${i === 0 ? 'scale-110 shadow-[0_0_20px_rgba(220,38,38,0.5)] z-10 translate-x-4' : 'opacity-60 grayscale'}`}>
                                      <span className="text-2xl">{UNIT_ICONS[u.type]}</span>
-                                     <div className="flex-1"><div className="font-bold text-white text-sm">{u.name}</div><div className="h-1 bg-black/50 rounded-full mt-1 overflow-hidden"><div className="h-full bg-red-500 transition-all duration-300" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div></div></div>
+                                     <div className="flex-1">
+                                         <div className="font-bold text-white text-sm">{u.name}</div>
+                                         <div className="h-1 bg-black/50 rounded-full mt-1 overflow-hidden">
+                                             <div className="h-full bg-red-500 transition-all duration-300" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
+                                         </div>
+                                     </div>
                                  </div>
                              ))}
+                             {battle.attackerUnits.length > 5 && <div className="text-center text-red-400 font-bold">+{battle.attackerUnits.length - 5} Reserves</div>}
                         </div>
-                        <div className="flex-1 flex justify-center items-center h-full relative">{battleAnimState === 'clashing' && <div className="absolute text-6xl animate-ping opacity-70">💥</div>}</div>
+
+                        {/* Combat Animation Area */}
+                        <div className="flex-1 flex justify-center items-center h-full relative">
+                             {battleAnimState === 'clashing' && (
+                                 <div className="absolute text-6xl animate-ping opacity-70">💥</div>
+                             )}
+                        </div>
+
+                        {/* Defender Stack */}
                         <div className="w-64 space-y-2">
                              {battle.defenderUnits.slice(0, 5).map((u, i) => (
                                  <div key={u.id} className={`bg-blue-900/80 border border-blue-700 p-3 rounded flex items-center gap-3 flex-row-reverse text-right transition-all duration-300 ${i === 0 ? 'scale-110 shadow-[0_0_20px_rgba(37,99,235,0.5)] z-10 -translate-x-4' : 'opacity-60 grayscale'}`}>
                                      <span className="text-2xl">{UNIT_ICONS[u.type]}</span>
-                                     <div className="flex-1"><div className="font-bold text-white text-sm">{u.name}</div><div className="h-1 bg-black/50 rounded-full mt-1 overflow-hidden"><div className="h-full bg-blue-500 transition-all duration-300" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div></div></div>
+                                     <div className="flex-1">
+                                         <div className="font-bold text-white text-sm">{u.name}</div>
+                                         <div className="h-1 bg-black/50 rounded-full mt-1 overflow-hidden">
+                                             <div className="h-full bg-blue-500 transition-all duration-300" style={{width: `${(u.hp/u.maxHp)*100}%`}}></div>
+                                         </div>
+                                     </div>
                                  </div>
                              ))}
+                              {battle.defenderUnits.length > 5 && <div className="text-center text-blue-400 font-bold">+{battle.defenderUnits.length - 5} Reserves</div>}
                         </div>
                     </div>
                 </div>
+
+                {/* Log & Controls */}
                 <div className="h-48 bg-[#151515] border-t border-[#333] flex">
                     <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-stone-400 space-y-1 custom-scrollbar">
-                        {battle.logs.map((log, i) => (<div key={i} className="border-l-2 border-stone-700 pl-2">{log}</div>))}
+                        {battle.logs.map((log, i) => (
+                            <div key={i} className="border-l-2 border-stone-700 pl-2">{log}</div>
+                        ))}
                     </div>
                     <div className="w-64 border-l border-[#333] p-6 flex flex-col gap-4 justify-center bg-[#1c1917]">
                         {!battle.winner ? (
                             <>
-                                <button onClick={() => setBattleSpeed(prev => prev === 200 ? null : 200)} className={`py-3 rounded font-bold uppercase text-sm border transition-all ${battleSpeed ? 'bg-orange-600 text-white border-orange-500 shadow-[0_0_10px_rgba(234,88,12,0.5)] animate-pulse' : 'bg-stone-800 text-stone-400 border-stone-600 hover:text-white'}`}>{battleSpeed ? 'Fighting...' : 'Start Round'}</button>
+                                <button 
+                                    onClick={() => setBattleSpeed(prev => prev === 200 ? null : 200)} 
+                                    className={`py-3 rounded font-bold uppercase text-sm border transition-all ${battleSpeed ? 'bg-orange-600 text-white border-orange-500 shadow-[0_0_10px_rgba(234,88,12,0.5)] animate-pulse' : 'bg-stone-800 text-stone-400 border-stone-600 hover:text-white'}`}
+                                >
+                                    {battleSpeed ? 'Fighting...' : 'Start Round'}
+                                </button>
                                 <button onClick={() => triggerBattleRound()} className="py-3 rounded font-bold uppercase text-sm bg-stone-700 text-white hover:bg-stone-600">Manual Resolve</button>
                             </>
                         ) : (
