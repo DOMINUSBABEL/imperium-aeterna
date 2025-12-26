@@ -42,10 +42,40 @@
       }
 
       .clouds-overlay {
-        background-image: url("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/dream-world/35.svg"); /* Fallback or noise texture usually, using noise here via SVG data uri is better */
         background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.005' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E");
         animation: floatClouds 120s linear infinite;
         opacity: 0.3;
+        pointer-events: none;
+      }
+
+      /* Ken Burns Effect for Main Menu */
+      @keyframes kenBurns {
+        0% { transform: scale(1) translate(0, 0); }
+        50% { transform: scale(1.15) translate(-2%, -1%); }
+        100% { transform: scale(1) translate(0, 0); }
+      }
+
+      .animate-ken-burns {
+        animation: kenBurns 40s ease-in-out infinite alternate;
+        will-change: transform;
+      }
+
+      /* Fog / Dust Overlay Animation */
+      @keyframes fogFlow {
+        0% { background-position: 0 0; opacity: 0.2; }
+        50% { opacity: 0.4; }
+        100% { background-position: 1000px 0; opacity: 0.2; }
+      }
+
+      .fog-layer {
+        background: url("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/dream-world/92.svg"); /* Ghostly gas texture fallback or similar noise */
+        background: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='fog'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.01' numOctaves='5' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23fog)' opacity='0.5'/%3E%3C/svg%3E");
+        position: absolute;
+        inset: 0;
+        opacity: 0.3;
+        animation: fogFlow 60s linear infinite;
+        background-size: cover;
+        mix-blend-mode: overlay;
         pointer-events: none;
       }
 

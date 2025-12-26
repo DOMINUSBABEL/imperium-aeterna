@@ -171,6 +171,7 @@ function App() {
   
   const [showTechTree, setShowTechTree] = useState(false);
   const [provinceTab, setProvinceTab] = useState<'OVERVIEW' | 'ECONOMY' | 'MILITARY'>('OVERVIEW');
+  const [menuTab, setMenuTab] = useState<'STATS' | 'UNITS' | 'LORE'>('STATS');
   const [techTab, setTechTab] = useState<TechCategory>(TechCategory.MILITARY);
   
   const [battleSpeed, setBattleSpeed] = useState<number | null>(null); 
@@ -241,11 +242,10 @@ function App() {
                 } else if (gameState.mapMode === MapMode.ECONOMY) {
                     const val = p.resourceValue;
                     let icon = "";
-                    // Color Grading
-                    if (val >= 20) { fillColor = '#eab308'; icon = "💎"; } // Rich Gold
-                    else if (val >= 12) { fillColor = '#ca8a04'; icon = "💰"; } // Darker Gold
-                    else if (val >= 8) { fillColor = '#a16207'; icon = ""; } // Brown/Bronze
-                    else { fillColor = '#78350f'; icon = "📉"; } // Poor
+                    if (val >= 20) { fillColor = '#eab308'; icon = "💎"; } 
+                    else if (val >= 12) { fillColor = '#ca8a04'; icon = "💰"; } 
+                    else if (val >= 8) { fillColor = '#a16207'; icon = ""; } 
+                    else { fillColor = '#78350f'; icon = "📉"; } 
                     fillOpacity = 0.7;
 
                     economyLabel = (
@@ -264,7 +264,7 @@ function App() {
                 if(p.terrain === TerrainType.DESERT) patternFill = 'url(#pat-desert)';
 
                 const isRelocationTarget = gameState.moveSourceId && (
-                     (gameState.moveSourceId === p.id && false) || // Origin can't be target
+                     (gameState.moveSourceId === p.id && false) || 
                      (gameState.provinces.find(prov => prov.id === gameState.moveSourceId)?.neighbors.includes(p.id) && p.ownerId === gameState.playerFactionId)
                 );
 
@@ -858,10 +858,18 @@ function App() {
     if (!previewFactionId) {
         return (
             <div className="min-h-screen bg-[#0f0e0e] flex flex-col items-center justify-center p-4 relative overflow-hidden">
-                <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1552566626-52f8b828add9?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-30 animate-pulse-slow"></div>
+                {/* Dynamic 2D Loop Animation Background */}
+                <div className="absolute inset-0 overflow-hidden">
+                    <img 
+                        src="https://image.pollinations.ai/prompt/ancient%20roman%20forum%20animated%20style%202d%20digital%20art%20bustling%20market%20detailed%20atmospheric?width=1280&height=720&nologo=true" 
+                        className="absolute inset-0 w-full h-full object-cover animate-ken-burns opacity-40" 
+                        alt="Background"
+                    />
+                    <div className="fog-layer"></div>
+                </div>
+                
                 <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black"></div>
-                <div className="absolute inset-0 clouds-overlay"></div>
-
+                
                 <div className="absolute top-0 w-full p-8 flex justify-between items-center z-10">
                     <h1 className="text-5xl font-bold text-white tracking-[0.3em] font-serif text-shadow-gold border-b-2 border-orange-900/50 pb-4">IMPERIUM AETERNA</h1>
                 </div>
