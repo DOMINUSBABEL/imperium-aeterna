@@ -1,9 +1,67 @@
 export enum Phase {
   MAIN_MENU = 'MAIN_MENU',
+  TUTORIAL = 'TUTORIAL',
   CAMPAIGN = 'CAMPAIGN',
   TECH_TREE = 'TECH_TREE',
   BATTLE = 'BATTLE',
   GAME_OVER = 'GAME_OVER'
+}
+
+// Tutorial System
+export interface TutorialStep {
+  id: string;
+  title: string;
+  description: string;
+  targetSelector?: string;
+  action?: 'SELECT_OWN_PROVINCE' | 'RECRUIT_UNIT' | 'END_TURN' | 'DECLARE_WAR' | 'MOVE_ARMY' | 'BUILD';
+  position: 'top' | 'bottom' | 'left' | 'right' | 'center';
+  highlightArea?: { x: number; y: number; width: number; height: number };
+}
+
+export interface TutorialState {
+  isActive: boolean;
+  currentStep: number;
+  completedSteps: string[];
+}
+
+// Diplomacy System (4X)
+export type DiplomaticRelation = 'WAR' | 'HOSTILE' | 'NEUTRAL' | 'FRIENDLY' | 'ALLIANCE';
+
+export interface Treaty {
+  id: string;
+  type: 'PEACE' | 'ALLIANCE' | 'TRADE';
+  factionA: FactionId;
+  factionB: FactionId;
+  turnsRemaining: number;
+}
+
+export interface DiplomacyState {
+  relations: Record<FactionId, Record<FactionId, DiplomaticRelation>>;
+  treaties: Treaty[];
+}
+
+// Order Queue System (RTS)
+export type OrderType = 'MOVE' | 'ATTACK' | 'BUILD' | 'RECRUIT' | 'FORTIFY';
+
+export interface Order {
+  id: string;
+  type: OrderType;
+  sourceProvinceId: string;
+  targetProvinceId?: string;
+  params?: {
+    unitType?: UnitType;
+    buildingId?: string;
+    troopCount?: number;
+  };
+}
+
+// Region System (Risk bonuses)
+export interface Region {
+  id: string;
+  name: string;
+  provinceIds: string[];
+  bonusTroops: number;
+  color: string;
 }
 
 export enum FactionId {
@@ -62,7 +120,7 @@ export interface RoguelikeTrait {
 export interface Faction {
   id: FactionId;
   name: string;
-  leaderName: string; 
+  leaderName: string;
   group: 'ROMAN' | 'PUNIC' | 'HELLENIC' | 'BARBARIAN' | 'EASTERN' | 'NEUTRAL';
   color: string;
   textColor: string;
@@ -72,7 +130,7 @@ export interface Faction {
   isPlayer: boolean;
   desc: string;
   unlockedTechs: string[];
-  traits: RoguelikeTrait[]; 
+  traits: RoguelikeTrait[];
   images: {
     leader: string;
     background: string;
@@ -117,10 +175,10 @@ export interface Decree {
 export interface Province {
   id: string;
   name: string;
-  x: number; 
-  y: number; 
+  x: number;
+  y: number;
   ownerId: FactionId;
-  neighbors: string[]; 
+  neighbors: string[];
   resourceValue: number; // Base Gold
   manpowerValue: number; // Base Manpower
   defenseBonus: number;
@@ -145,13 +203,19 @@ export interface GameState {
   factions: Record<FactionId, Faction>;
   provinces: Province[];
   selectedProvinceId: string | null;
-  moveSourceId: string | null; 
+  moveSourceId: string | null;
   logs: string[];
   activeBattle: BattleState | null;
-  loadingAI: boolean; 
+  loadingAI: boolean;
   modalMessage: { title: string; body: string; image?: string } | null;
-  isPaused: boolean; // For in-game menu
+  isPaused: boolean;
   mapMode: MapMode;
+  // New systems
+  tutorial: TutorialState;
+  diplomacy: DiplomacyState;
+  orderQueue: Order[];
+  pendingReinforcements: number;
+  showDiplomacyPanel: boolean;
 }
 
 export interface BattleState {

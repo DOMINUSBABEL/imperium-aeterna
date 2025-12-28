@@ -94,6 +94,84 @@
       .text-shadow-gold {
         text-shadow: 0px 0px 10px rgba(251, 191, 36, 0.5);
       }
+
+      /* Slow spin animation for selection indicators */
+      @keyframes spin-slow {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .animate-spin-slow {
+        animation: spin-slow 8s linear infinite;
+      }
+
+      /* Pulse slow for backgrounds */
+      @keyframes pulse-slow {
+        0%, 100% { opacity: 0.3; }
+        50% { opacity: 0.4; }
+      }
+      .animate-pulse-slow {
+        animation: pulse-slow 4s ease-in-out infinite;
+      }
+
+      /* Glow effect for important buttons */
+      .glow-orange {
+        box-shadow: 0 0 20px rgba(234, 88, 12, 0.5);
+      }
+      .glow-emerald {
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+      }
+
+      /* Better scrollbar for logs */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #78350f;
+        border-radius: 2px;
+      }
+
+      /* Hide scrollbar for faction carousel */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* Animate-in classes for smooth transitions */
+      .animate-in {
+        animation-duration: 0.3s;
+        animation-fill-mode: both;
+      }
+      .fade-in {
+        animation-name: fadeIn;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .slide-in-from-left-4 {
+        animation-name: slideInFromLeft;
+      }
+      @keyframes slideInFromLeft {
+        from { transform: translateX(-1rem); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      .slide-in-from-bottom-4 {
+        animation-name: slideInFromBottom;
+      }
+      @keyframes slideInFromBottom {
+        from { transform: translateY(1rem); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      .slide-in-from-top-4 {
+        animation-name: slideInFromTop;
+      }
+      @keyframes slideInFromTop {
+        from { transform: translateY(-1rem); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
     </style>
   <script type="importmap">
 {
